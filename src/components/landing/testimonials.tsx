@@ -34,7 +34,7 @@ function initials(name: string) {
 
 export function Testimonials() {
   return (
-    <section className="border-y bg-card/30 py-24 sm:py-32">
+    <section id="testimonials" className="scroll-mt-20 border-y bg-card/30 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           eyebrow="Loved by shops"
