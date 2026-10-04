@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { shopActions } from "@/lib/shop/store"
+import { addVehicle, updateVehicle } from "@/app/app/actions"
 import type { Vehicle } from "@/lib/shop/types"
 import {
   decodeVin,
@@ -24,6 +24,7 @@ import {
   normalizePlate,
   normalizeVin,
 } from "@/lib/shop/vin"
+import { useServerAction } from "./use-server-action"
 
 type FormState = {
   plate: string
@@ -77,7 +78,6 @@ type VehicleFormProps = {
   vehicle?: Vehicle
   /** Prefill for a new vehicle, e.g. the plate or VIN that was searched */
   defaults?: Partial<FormState>
-  existingVehicles: Vehicle[]
   onSaved?: (id: string) => void
 }
 
@@ -105,19 +105,14 @@ export function VehicleFormDialog({
   )
 }
 
-function VehicleForm({
-  vehicle,
-  defaults,
-  existingVehicles,
-  onSaved,
-  onClose,
-}: VehicleFormProps & { onClose: () => void }) {
+function VehicleForm({ vehicle, defaults, onSaved, onClose }: VehicleFormProps & { onClose: () => void }) {
   const [form, setForm] = React.useState<FormState>(() =>
     vehicle ? fromVehicle(vehicle) : { ...empty, ...defaults },
   )
   const [errors, setErrors] = React.useState<Partial<Record<keyof FormState | "form", string>>>({})
   const [decoding, setDecoding] = React.useState(false)
   const [decodeMessage, setDecodeMessage] = React.useState<string | null>(null)
+  const { run, pending, error: serverError } = useServerAction()
 
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -161,15 +156,7 @@ function VehicleForm({
     if (!form.model.trim()) next.model = "Required"
     if (!form.customerName.trim()) next.customerName = "Required"
     const mileage = form.mileage.trim() === "" ? null : Number(form.mileage.replace(/,/g, ""))
-    if (mileage !== null && (!Number.isFinite(mileage) || mileage < 0)) next.mileage = "Enter a valid number"
-
-    const others = existingVehicles.filter((v) => v.id !== vehicle?.id)
-    if (vin && others.some((v) => v.vin === vin)) next.vin = "A vehicle with this VIN already exists"
-    if (
-      plate &&
-      others.some((v) => v.plate === plate && v.plateState === form.plateState.trim().toUpperCase())
-    )
-      next.plate = "A vehicle with this plate already exists"
+    if (mileage !== null && (!Number.isInteger(mileage) || mileage < 0)) next.mileage = "Enter a whole number"
 
     setErrors(next)
     if (Object.keys(next).length) return
@@ -191,13 +178,24 @@ function VehicleForm({
       },
     }
 
+    // Duplicate plates/VINs are checked on the server
     if (vehicle) {
-      shopActions.updateVehicle(vehicle.id, data)
-      onSaved?.(vehicle.id)
+      run(
+        () => updateVehicle(vehicle.id, data),
+        () => {
+          onSaved?.(vehicle.id)
+          onClose()
+        },
+      )
     } else {
-      onSaved?.(shopActions.addVehicle(data))
+      run(
+        () => addVehicle(data),
+        ({ id }) => {
+          onSaved?.(id)
+          onClose()
+        },
+      )
     }
-    onClose()
   }
 
   return (
@@ -334,13 +332,18 @@ function VehicleForm({
         </div>
       </fieldset>
 
-      {errors.form && <p className="text-sm text-destructive">{errors.form}</p>}
+      {(errors.form || serverError) && (
+        <p className="text-sm text-destructive">{errors.form ?? serverError}</p>
+      )}
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit">{vehicle ? "Save changes" : "Add vehicle"}</Button>
+        <Button type="submit" disabled={pending}>
+          {pending && <Loader2 className="animate-spin" />}
+          {vehicle ? "Save changes" : "Add vehicle"}
+        </Button>
       </DialogFooter>
     </form>
   )

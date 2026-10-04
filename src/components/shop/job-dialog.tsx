@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Plus, Trash2, Wrench, Package } from "lucide-react"
+import { Loader2, Package, Plus, Trash2, Wrench } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,9 +19,10 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { computeTotals, formatMoney, lineTotalCents } from "@/lib/shop/money"
 import { SHOP } from "@/lib/shop/settings"
-import { newId, shopActions } from "@/lib/shop/store"
+import { saveJob } from "@/app/app/actions"
 import type { Job, JobStatus, LineItem, LineItemType } from "@/lib/shop/types"
 import { cn } from "@/lib/utils"
+import { clientId, useServerAction } from "./use-server-action"
 
 /** Common jobs that prefill the line items */
 const PRESETS: { title: string; items: Omit<LineItem, "id">[] }[] = [
@@ -60,7 +61,7 @@ const PRESETS: { title: string; items: Omit<LineItem, "id">[] }[] = [
 type ItemDraft = { id: string; type: LineItemType; description: string; quantity: string; unitPrice: string }
 
 const toDraft = (i: Omit<LineItem, "id"> & { id?: string }): ItemDraft => ({
-  id: i.id ?? newId(),
+  id: i.id ?? clientId(),
   type: i.type,
   description: i.description,
   quantity: String(i.quantity),
@@ -107,7 +108,7 @@ function JobForm({ vehicleId, vehicleMileage, job, onClose }: JobFormProps & { o
   const [status, setStatus] = React.useState<JobStatus>(job?.status ?? "in_progress")
   const [notes, setNotes] = React.useState(job?.notes ?? "")
   const [items, setItems] = React.useState<ItemDraft[]>(() => job?.items.map(toDraft) ?? [])
-  const [error, setError] = React.useState<string | null>(null)
+  const { run, pending, error, setError } = useServerAction()
 
   const totals = computeTotals(items.map(parseItem), SHOP.partsTaxRate)
 
@@ -140,19 +141,22 @@ function JobForm({ vehicleId, vehicleMileage, job, onClose }: JobFormProps & { o
     if (parsed.some((i) => i.quantity <= 0 || i.unitPrice < 0))
       return setError("Quantities must be above zero and prices can't be negative")
     const miles = mileage.trim() === "" ? null : Number(mileage.replace(/,/g, ""))
-    if (miles !== null && (!Number.isFinite(miles) || miles < 0)) return setError("Enter a valid mileage")
+    if (miles !== null && (!Number.isInteger(miles) || miles < 0)) return setError("Enter a valid mileage")
 
-    shopActions.saveJob({
-      id: job?.id,
-      vehicleId,
-      title: title.trim(),
-      technician: technician.trim(),
-      mileage: miles,
-      status,
-      notes: notes.trim(),
-      items: parsed,
-    })
-    onClose()
+    run(
+      () =>
+        saveJob({
+          id: job?.id,
+          vehicleId,
+          title: title.trim(),
+          technician: technician.trim(),
+          mileage: miles,
+          status,
+          notes: notes.trim(),
+          items: parsed,
+        }),
+      onClose,
+    )
   }
 
   return (
@@ -321,7 +325,10 @@ function JobForm({ vehicleId, vehicleMileage, job, onClose }: JobFormProps & { o
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit">{job ? "Save job" : "Add job"}</Button>
+        <Button type="submit" disabled={pending}>
+          {pending && <Loader2 className="animate-spin" />}
+          {job ? "Save job" : "Add job"}
+        </Button>
       </DialogFooter>
     </form>
   )

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 
 const nav = [
   { href: "/app", label: "Finder" },
+  { href: "/app/jobs", label: "Pending jobs" },
   { href: "/app/invoices", label: "Invoices" },
 ]
 
@@ -20,9 +21,9 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl print:hidden">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
-        <Logo href="/app" className="shrink-0" />
-        <nav className="flex items-center gap-1">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
+        <Logo href="/app" compact className="shrink-0" />
+        <nav className="flex min-w-0 items-center gap-1">
           {nav.map((item) => (
             <Button key={item.href} variant="ghost" size="sm" asChild>
               <Link

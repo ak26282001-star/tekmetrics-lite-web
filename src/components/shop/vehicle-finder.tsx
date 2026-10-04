@@ -9,16 +9,15 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { shopActions, useShop, vehicleLabel } from "@/lib/shop/store"
-import type { Job, Vehicle } from "@/lib/shop/types"
+import { vehicleLabel } from "@/lib/shop/format"
+import type { VehicleSummary } from "@/lib/shop/types"
 import { normalizePlate, normalizeVin } from "@/lib/shop/vin"
-import { LoadingState, PlateChip, StatusBadge } from "./common"
+import { PlateChip, StatusBadge } from "./common"
 import { VehicleFormDialog } from "./vehicle-form-dialog"
 
 type Mode = "plate" | "vin"
 
-export function VehicleFinder() {
-  const shop = useShop()
+export function VehicleFinder({ vehicles }: { vehicles: VehicleSummary[] }) {
   const router = useRouter()
   const [mode, setMode] = React.useState<Mode>("plate")
   const [query, setQuery] = React.useState("")
@@ -27,18 +26,15 @@ export function VehicleFinder() {
   const needle = mode === "plate" ? normalizePlate(query) : normalizeVin(query)
 
   const results = React.useMemo(() => {
-    if (!shop) return []
     const list = needle
-      ? shop.vehicles.filter((v) => (mode === "plate" ? v.plate.includes(needle) : v.vin.includes(needle)))
-      : shop.vehicles
+      ? vehicles.filter((v) => (mode === "plate" ? v.plate.includes(needle) : v.vin.includes(needle)))
+      : vehicles
     // Exact matches first, then most recent activity
     return [...list].sort((a, b) => {
       const exact = Number(field(b, mode) === needle) - Number(field(a, mode) === needle)
-      return exact || lastActivity(shop.jobs, b).localeCompare(lastActivity(shop.jobs, a))
+      return exact || b.lastActivity.localeCompare(a.lastActivity)
     })
-  }, [shop, needle, mode])
-
-  if (!shop) return <LoadingState />
+  }, [vehicles, needle, mode])
 
   return (
     <div className="space-y-8">
@@ -120,30 +116,16 @@ export function VehicleFinder() {
           ) : (
             <ul className="divide-y">
               {results.map((v) => (
-                <VehicleRow key={v.id} vehicle={v} jobs={shop.jobs.filter((j) => j.vehicleId === v.id)} />
+                <VehicleRow key={v.id} vehicle={v} />
               ))}
             </ul>
           )}
         </div>
       </Card>
 
-      <div className="flex justify-end">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          onClick={() => {
-            if (confirm("Replace all data in this browser with the sample data?")) shopActions.resetDemoData()
-          }}
-        >
-          Reset sample data
-        </Button>
-      </div>
-
       <VehicleFormDialog
         open={adding}
         onOpenChange={setAdding}
-        existingVehicles={shop.vehicles}
         defaults={needle ? (mode === "plate" ? { plate: needle } : { vin: needle }) : undefined}
         onSaved={(id) => router.push(`/app/vehicles/${id}`)}
       />
@@ -151,9 +133,8 @@ export function VehicleFinder() {
   )
 }
 
-function VehicleRow({ vehicle, jobs }: { vehicle: Vehicle; jobs: Job[] }) {
-  const open = jobs.filter((j) => j.status === "in_progress").length
-  const toInvoice = jobs.filter((j) => j.status === "completed" && !j.invoiceId).length
+function VehicleRow({ vehicle }: { vehicle: VehicleSummary }) {
+  const { inProgress: open, toInvoice } = vehicle
 
   return (
     <li>
@@ -184,12 +165,6 @@ function VehicleRow({ vehicle, jobs }: { vehicle: Vehicle; jobs: Job[] }) {
   )
 }
 
-function field(v: Vehicle, mode: Mode) {
+function field(v: VehicleSummary, mode: Mode) {
   return mode === "plate" ? v.plate : v.vin
-}
-
-function lastActivity(jobs: Job[], v: Vehicle) {
-  return jobs
-    .filter((j) => j.vehicleId === v.id)
-    .reduce((latest, j) => (j.createdAt > latest ? j.createdAt : latest), v.createdAt)
 }

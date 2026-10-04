@@ -74,9 +74,18 @@ export type Invoice = {
   paidAt: string | null
 }
 
-export type ShopState = {
+export type ShopData = {
   vehicles: Vehicle[]
   jobs: Job[]
   invoices: Invoice[]
-  nextInvoiceNumber: number
 }
+
+/** A vehicle with its pending-job counts, for the finder */
+export type VehicleSummary = Vehicle & {
+  inProgress: number
+  toInvoice: number
+  lastActivity: string
+}
+
+/** A job that hasn't been invoiced yet, with its vehicle */
+export type PendingJob = Job & { vehicle: Vehicle }

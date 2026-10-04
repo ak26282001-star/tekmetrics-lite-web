@@ -7,24 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { computeTotals, formatDate, formatMoney, lineTotalCents } from "@/lib/shop/money"
 import { SHOP } from "@/lib/shop/settings"
-import { shopActions, useShop } from "@/lib/shop/store"
-import { LoadingState, StatusBadge } from "./common"
+import type { Invoice } from "@/lib/shop/types"
+import { setInvoiceStatus } from "@/app/app/actions"
+import { StatusBadge } from "./common"
+import { useServerAction } from "./use-server-action"
 
-export function InvoiceView({ id }: { id: string }) {
-  const shop = useShop()
-  if (!shop) return <LoadingState />
-
-  const invoice = shop.invoices.find((i) => i.id === id)
-  if (!invoice) {
-    return (
-      <div className="py-24 text-center">
-        <p className="font-medium">Invoice not found</p>
-        <Button asChild variant="outline" className="mt-6">
-          <Link href="/app/invoices">All invoices</Link>
-        </Button>
-      </div>
-    )
-  }
+export function InvoiceView({ invoice }: { invoice: Invoice }) {
+  const { run, pending, error } = useServerAction()
 
   const allItems = invoice.jobs.flatMap((j) => j.items)
   const totals = computeTotals(allItems, invoice.taxRate)
@@ -42,12 +31,20 @@ export function InvoiceView({ id }: { id: string }) {
         </Button>
         <div className="flex flex-wrap gap-2">
           {paid ? (
-            <Button variant="ghost" onClick={() => shopActions.setInvoiceStatus(invoice.id, "unpaid")}>
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() => run(() => setInvoiceStatus(invoice.id, "unpaid"))}
+            >
               <RotateCcw />
               Mark unpaid
             </Button>
           ) : (
-            <Button variant="outline" onClick={() => shopActions.setInvoiceStatus(invoice.id, "paid")}>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => run(() => setInvoiceStatus(invoice.id, "paid"))}
+            >
               <CheckCircle2 />
               Mark paid
             </Button>
@@ -58,6 +55,12 @@ export function InvoiceView({ id }: { id: string }) {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive print:hidden">
+          {error}
+        </p>
+      )}
 
       <article className="mx-auto max-w-4xl rounded-xl border bg-card p-6 shadow-sm sm:p-10 print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none">
         <header className="flex flex-col justify-between gap-6 sm:flex-row">

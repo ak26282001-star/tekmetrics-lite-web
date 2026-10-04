@@ -1,11 +1,10 @@
-import type { ShopState } from "./types"
+import type { ShopData } from "./types"
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString()
 
 /** Sample data so the app isn't empty on first open. */
-export function createSeedState(): ShopState {
+export function createSeedData(): ShopData {
   return {
-    nextInvoiceNumber: 1002,
     vehicles: [
       {
         id: "veh-crv",

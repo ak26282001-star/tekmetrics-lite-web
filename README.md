@@ -20,13 +20,28 @@ Open http://localhost:3000.
 
 ## Shop app (`/app`)
 
-A working demo of the shop workflow:
-
 - **Vehicle finder** (`/app`) — search by license plate or VIN (partial matches, e.g. last 6 of the VIN). Add a new vehicle when there's no match; **Decode** fills year/make/model from the VIN via the free [NHTSA vPIC API](https://vpic.nhtsa.dot.gov/api/).
-- **Vehicle page** (`/app/vehicles/[id]`) — customer details and job history. Add jobs with labor and parts lines (quick-add presets included), mark them complete, then select completed jobs to **create an invoice**.
-- **Invoices** (`/app/invoices`) — list with outstanding balance; each invoice is printable / savable as PDF and can be marked paid.
+- **Pending jobs** (`/app/jobs`) — every job not yet invoiced, across all vehicles, oldest first. Filter by status or technician, search by plate/customer, mark jobs complete or invoice them in one click.
+- **Vehicle page** (`/app/vehicles/[id]`) — customer details and job history. Add jobs with labor and parts lines, mark them complete, then select completed jobs to **create an invoice**.
+- **Invoices** (`/app/invoices`) — list with payment status; each invoice is printable / savable as PDF and can be marked paid.
 
-Data is stored in the browser's `localStorage` (no backend yet) and starts with sample vehicles. Shop name, address, labor rate and tax rate live in `src/lib/shop/settings.ts`. All data access goes through `src/lib/shop/store.ts`, so swapping in a real API later only touches that file.
+> ⚠️ There is no login yet — anyone who can reach the site can see and change shop data. Add authentication before deploying publicly.
+
+## Database
+
+The backend uses [Drizzle ORM](https://orm.drizzle.team) with SQLite (libSQL). Pages read data on the server (`src/lib/shop/queries.ts`) and changes go through Server Actions (`src/app/app/actions.ts`), which validate every input.
+
+- **Local:** nothing to set up. On first request the app creates `data/shop.db`, runs migrations and loads a few sample vehicles. Delete `data/` to start over.
+- **Hosted (e.g. Vercel):** serverless hosts can't keep a local file, so create a free database at [turso.tech](https://turso.tech) and set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` (see `.env.example`). Migrations run automatically; sample data is never added to a hosted database.
+
+Changing the schema (`src/db/schema.ts`):
+
+```bash
+npm run db:generate   # create a new migration in drizzle/
+npm run db:studio     # browse the data
+```
+
+Shop name, address, labor rate and tax rate live in `src/lib/shop/settings.ts`.
 
 ## Structure
 
@@ -36,13 +51,15 @@ src/
     globals.css       # Theme tokens (shadcn CSS variables, ignition-orange brand)
     layout.tsx        # Fonts, metadata, dark theme
     page.tsx          # Composes the landing sections
-    app/              # Shop app routes (/app, /app/vehicles/[id], /app/invoices)
+    app/              # Shop app routes + Server Actions (actions.ts)
+drizzle/              # SQL migrations
   components/
     ui/               # shadcn/ui primitives (button, card, badge, tabs, accordion…)
     landing/          # Page sections: navbar, hero, features, pricing, faq, footer…
-    shop/             # Shop app: finder, vehicle page, job dialog, invoices
+    shop/             # Shop app: finder, pending jobs, vehicle page, job dialog, invoices
+  db/                 # Drizzle schema + database connection
   lib/
-    shop/             # Shop data: types, store, money, VIN helpers, sample data
+    shop/             # Shop data: types, queries, money, VIN helpers, sample data
     utils.ts          # cn() helper
 ```
 

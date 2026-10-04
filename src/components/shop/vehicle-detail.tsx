@@ -22,42 +22,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { computeTotals, formatDate, formatMoney } from "@/lib/shop/money"
 import { SHOP } from "@/lib/shop/settings"
-import { shopActions, useShop, vehicleLabel } from "@/lib/shop/store"
+import { createInvoice, deleteJob, setJobStatus } from "@/app/app/actions"
+import { vehicleLabel } from "@/lib/shop/format"
 import type { Invoice, Job, Vehicle } from "@/lib/shop/types"
 import { cn } from "@/lib/utils"
-import { LoadingState, PlateChip, StatusBadge } from "./common"
+import { PlateChip, StatusBadge } from "./common"
 import { JobDialog } from "./job-dialog"
+import { useServerAction } from "./use-server-action"
 import { VehicleFormDialog } from "./vehicle-form-dialog"
 
-export function VehicleDetail({ id }: { id: string }) {
-  const shop = useShop()
+export function VehicleDetail({
+  vehicle,
+  jobs,
+  invoices,
+}: {
+  vehicle: Vehicle
+  jobs: Job[]
+  invoices: Invoice[]
+}) {
   const router = useRouter()
   const [editingVehicle, setEditingVehicle] = React.useState(false)
   const [jobDialog, setJobDialog] = React.useState<{ open: boolean; job?: Job }>({ open: false })
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const { run, pending, error } = useServerAction()
 
-  if (!shop) return <LoadingState />
-
-  const vehicle = shop.vehicles.find((v) => v.id === id)
-  if (!vehicle) {
-    return (
-      <div className="py-24 text-center">
-        <p className="font-medium">Vehicle not found</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          It may have been added in another browser — data is stored on this device.
-        </p>
-        <Button asChild variant="outline" className="mt-6">
-          <Link href="/app">Back to finder</Link>
-        </Button>
-      </div>
-    )
-  }
-
-  const jobs = shop.jobs.filter((j) => j.vehicleId === id)
   const inProgress = jobs.filter((j) => j.status === "in_progress")
   const readyToInvoice = jobs.filter((j) => j.status === "completed" && !j.invoiceId)
   const invoiced = jobs.filter((j) => j.invoiceId)
-  const invoicesById = new Map(shop.invoices.map((i) => [i.id, i]))
+  const invoicesById = new Map(invoices.map((i) => [i.id, i]))
 
   // Only keep selections that are still invoiceable
   const selectedIds = readyToInvoice.filter((j) => selected.has(j.id)).map((j) => j.id)
@@ -74,9 +66,15 @@ export function VehicleDetail({ id }: { id: string }) {
     })
   }
 
-  function createInvoice(jobIds: string[]) {
-    const invoiceId = shopActions.createInvoice(id, jobIds)
-    if (invoiceId) router.push(`/app/invoices/${invoiceId}`)
+  function invoiceSelected() {
+    run(
+      () => createInvoice(vehicle.id, selectedIds),
+      ({ id }) => router.push(`/app/invoices/${id}`),
+    )
+  }
+
+  function removeJob(job: Job) {
+    if (confirm(`Delete “${job.title}”?`)) run(() => deleteJob(job.id))
   }
 
   return (
@@ -89,6 +87,15 @@ export function VehicleDetail({ id }: { id: string }) {
       </Button>
 
       <VehicleHeader vehicle={vehicle} onEdit={() => setEditingVehicle(true)} />
+
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
@@ -118,11 +125,13 @@ export function VehicleDetail({ id }: { id: string }) {
               key={job.id}
               job={job}
               onEdit={() => setJobDialog({ open: true, job })}
+              onDelete={() => removeJob(job)}
               actions={
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => shopActions.setJobStatus(job.id, "completed")}
+                  disabled={pending}
+                  onClick={() => run(() => setJobStatus(job.id, "completed"))}
                 >
                   <CheckCircle2 />
                   Mark complete
@@ -138,7 +147,7 @@ export function VehicleDetail({ id }: { id: string }) {
           title="Completed — ready to invoice"
           count={readyToInvoice.length}
           action={
-            <Button disabled={selectedIds.length === 0} onClick={() => createInvoice(selectedIds)}>
+            <Button disabled={selectedIds.length === 0 || pending} onClick={invoiceSelected}>
               <FileText />
               {selectedIds.length
                 ? `Create invoice · ${formatMoney(selectedTotal)}`
@@ -154,11 +163,13 @@ export function VehicleDetail({ id }: { id: string }) {
               selected={selected.has(job.id)}
               onSelect={(c) => toggle(job.id, c)}
               onEdit={() => setJobDialog({ open: true, job })}
+              onDelete={() => removeJob(job)}
               actions={
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => shopActions.setJobStatus(job.id, "in_progress")}
+                  disabled={pending}
+                  onClick={() => run(() => setJobStatus(job.id, "in_progress"))}
                 >
                   <RotateCcw />
                   Reopen
@@ -181,12 +192,7 @@ export function VehicleDetail({ id }: { id: string }) {
         </JobSection>
       )}
 
-      <VehicleFormDialog
-        open={editingVehicle}
-        onOpenChange={setEditingVehicle}
-        vehicle={vehicle}
-        existingVehicles={shop.vehicles}
-      />
+      <VehicleFormDialog open={editingVehicle} onOpenChange={setEditingVehicle} vehicle={vehicle} />
       <JobDialog
         open={jobDialog.open}
         onOpenChange={(open) => setJobDialog((d) => ({ ...d, open }))}
@@ -290,6 +296,7 @@ function JobCard({
   selected,
   onSelect,
   onEdit,
+  onDelete,
   actions,
 }: {
   job: Job
@@ -298,6 +305,7 @@ function JobCard({
   selected?: boolean
   onSelect?: (checked: boolean) => void
   onEdit?: () => void
+  onDelete?: () => void
   actions?: React.ReactNode
 }) {
   const totals = computeTotals(job.items, SHOP.partsTaxRate)
@@ -376,9 +384,7 @@ function JobCard({
                 size="sm"
                 variant="ghost"
                 className="text-muted-foreground hover:text-destructive"
-                onClick={() => {
-                  if (confirm(`Delete “${job.title}”?`)) shopActions.deleteJob(job.id)
-                }}
+                onClick={onDelete}
               >
                 <Trash2 />
                 Delete

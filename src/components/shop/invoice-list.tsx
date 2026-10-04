@@ -6,14 +6,11 @@ import { FileText } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { computeTotals, formatDate, formatMoney } from "@/lib/shop/money"
-import { useShop } from "@/lib/shop/store"
-import { LoadingState, StatusBadge } from "./common"
+import type { Invoice } from "@/lib/shop/types"
+import { StatusBadge } from "./common"
 
-export function InvoiceList() {
-  const shop = useShop()
-  if (!shop) return <LoadingState />
-
-  const rows = [...shop.invoices]
+export function InvoiceList({ invoices }: { invoices: Invoice[] }) {
+  const rows = [...invoices]
     .sort((a, b) => b.number - a.number)
     .map((inv) => ({
       ...inv,
