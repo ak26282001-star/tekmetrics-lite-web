@@ -15,8 +15,25 @@ import * as schema from "./schema"
  * Local development uses a SQLite file at data/shop.db.
  * In production set TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) to use a hosted libSQL database.
  */
-const remoteUrl = process.env.TURSO_DATABASE_URL
+const remoteUrl = process.env.TURSO_DATABASE_URL?.trim() || undefined
 const isLocal = !remoteUrl
+
+export type DbConfigIssue = "hosted-without-database" | "missing-auth-token" | "invalid-url"
+
+/**
+ * Detects setups that can never work, so the app can explain them instead of failing on every page.
+ * Serverless hosts (Vercel, Netlify, AWS Lambda) have no persistent disk for the local SQLite file.
+ */
+export function getDbConfigIssue(): DbConfigIssue | null {
+  const serverless = Boolean(
+    process.env.VERCEL || process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME,
+  )
+  if (!remoteUrl) return serverless ? "hosted-without-database" : null
+  if (!/^(libsql|https?|wss?|file):/i.test(remoteUrl)) return "invalid-url"
+  if (/^(libsql|https?|wss?):/i.test(remoteUrl) && !process.env.TURSO_AUTH_TOKEN?.trim())
+    return "missing-auth-token"
+  return null
+}
 
 function createDb() {
   if (isLocal) mkdirSync(path.join(process.cwd(), "data"), { recursive: true })
@@ -61,10 +78,17 @@ async function prepare(db: Db) {
 
 /** Returns the database once migrations (and first-run sample data) are applied. */
 export async function getDb() {
+  const issue = getDbConfigIssue()
+  if (issue) throw new Error(`Database is not configured (${issue}). See README → Database.`)
   // Connect lazily so importing this module (e.g. during `next build`) never opens the database
   const db = (globalForDb.db ??= createDb())
   globalForDb.dbReady ??= prepare(db).catch((err) => {
     globalForDb.dbReady = undefined // allow a retry on the next request
+    // Shows up in the server / hosting logs with the real cause
+    console.error(
+      `[db] Could not open the ${isLocal ? "local database file data/shop.db" : "Turso database"}:`,
+      err,
+    )
     throw err
   })
   await globalForDb.dbReady
