@@ -1,18 +1,24 @@
 import type { DbConfigIssue } from "@/db"
 
 const COPY: Record<DbConfigIssue, { title: string; intro: string }> = {
-  "hosted-without-database": {
-    title: "Connect a database to use the shop app",
-    intro:
-      "This site is running on a serverless host (like Vercel), which can't keep the local database file the app uses on your own computer. Connect a free hosted database instead:",
-  },
-  "missing-auth-token": {
-    title: "Database token missing",
-    intro: "TURSO_DATABASE_URL is set, but TURSO_AUTH_TOKEN isn't. Add the token:",
+  "missing-database-url": {
+    title: "Connect your Supabase database",
+    intro: "The app needs a DATABASE_URL to store vehicles, jobs and invoices.",
   },
   "invalid-url": {
     title: "Database address looks wrong",
-    intro: "TURSO_DATABASE_URL should look like libsql://your-db-name-your-org.turso.io. Fix it:",
+    intro:
+      "DATABASE_URL should start with postgresql:// — copy it again from Supabase. If your password contains special characters like @, # or /, reset it to one with only letters and numbers.",
+  },
+  "password-placeholder": {
+    title: "Fill in your database password",
+    intro:
+      "DATABASE_URL still contains [YOUR-PASSWORD]. Replace it (including the brackets) with your Supabase database password.",
+  },
+  "supabase-direct-on-serverless": {
+    title: "Use Supabase's pooler connection string",
+    intro:
+      "DATABASE_URL uses the direct connection (db.….supabase.co), which Vercel can't reach. Use the Transaction pooler string instead (host ends in pooler.supabase.com, port 6543).",
   },
 }
 
@@ -24,34 +30,47 @@ export function DbSetupNeeded({ issue }: { issue: DbConfigIssue }) {
       <p className="text-xs font-semibold uppercase tracking-wider text-warning">Setup needed</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">{intro}</p>
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm">
-        {issue === "hosted-without-database" && (
-          <>
-            <li>
-              Create a free database at{" "}
-              <a
-                href="https://turso.tech"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                turso.tech
-              </a>
-              .
-            </li>
-            <li>Copy its database URL and create an auth token.</li>
-          </>
-        )}
+      <ol className="mt-5 list-decimal space-y-2.5 pl-5 text-sm">
         <li>
-          In your hosting dashboard (Vercel: Project → Settings → Environment Variables), set{" "}
-          <code className="rounded bg-muted px-1 font-mono">TURSO_DATABASE_URL</code> and{" "}
-          <code className="rounded bg-muted px-1 font-mono">TURSO_AUTH_TOKEN</code>.
+          In{" "}
+          <a
+            href="https://supabase.com/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline"
+          >
+            Supabase
+          </a>
+          , open your project and click <span className="font-medium">Connect</span> at the top.
         </li>
-        <li>Redeploy. Tables are created automatically on the first visit.</li>
+        <li>
+          Under <span className="font-medium">Transaction pooler</span>, copy the URI. It looks like{" "}
+          <code className="break-all rounded bg-muted px-1 font-mono text-xs">
+            postgresql://postgres.abcd:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+          </code>
+        </li>
+        <li>
+          Replace <code className="rounded bg-muted px-1 font-mono">[YOUR-PASSWORD]</code> with your database
+          password (Project Settings → Database can reset it).
+        </li>
+        <li>
+          Save it as <code className="rounded bg-muted px-1 font-mono">DATABASE_URL</code>:
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>
+              <span className="text-foreground">Vercel:</span> Project → Settings → Environment Variables,
+              then redeploy.
+            </li>
+            <li>
+              <span className="text-foreground">Your computer:</span> in a file named{" "}
+              <code className="font-mono">.env.local</code> in the project folder, then restart{" "}
+              <code className="font-mono">npm run dev</code>.
+            </li>
+          </ul>
+        </li>
       </ol>
       <p className="mt-6 text-xs text-muted-foreground">
-        Running on your own computer instead? Use <code className="font-mono">npm run dev</code> — no setup
-        needed.
+        The app creates its tables automatically on the first visit, with row level security turned on so
+        they&apos;re not readable through Supabase&apos;s public API.
       </p>
     </div>
   )

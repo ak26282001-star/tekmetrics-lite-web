@@ -1,8 +1,14 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { doublePrecision, index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core"
 
 import type { Customer, InvoiceJob, LineItem } from "@/lib/shop/types"
 
-export const vehicles = sqliteTable(
+// Timestamps are stored as ISO-8601 text so they round-trip unchanged between server and browser.
+//
+// Every table enables row level security with no policies: Supabase exposes the `public` schema
+// through its Data API, and this keeps customer data unreadable with the anon/public key. The app's
+// server connection (the `postgres` role) bypasses RLS.
+
+export const vehicles = pgTable(
   "vehicles",
   {
     id: text("id").primaryKey(),
@@ -21,9 +27,9 @@ export const vehicles = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("vehicles_plate_idx").on(t.plate), index("vehicles_vin_idx").on(t.vin)],
-)
+).enableRLS()
 
-export const jobs = sqliteTable(
+export const jobs = pgTable(
   "jobs",
   {
     id: text("id").primaryKey(),
@@ -35,7 +41,7 @@ export const jobs = sqliteTable(
     technician: text("technician").notNull().default(""),
     mileage: integer("mileage"),
     status: text("status", { enum: ["in_progress", "completed"] }).notNull(),
-    items: text("items", { mode: "json" }).$type<LineItem[]>().notNull(),
+    items: jsonb("items").$type<LineItem[]>().notNull(),
     createdAt: text("created_at").notNull(),
     completedAt: text("completed_at"),
     invoiceId: text("invoice_id"),
@@ -51,10 +57,10 @@ export const jobs = sqliteTable(
     index("jobs_invoice_idx").on(t.invoiceId),
     index("jobs_parts_status_idx").on(t.partsStatus),
   ],
-)
+).enableRLS()
 
 /** Invoices snapshot the customer, vehicle and jobs so later edits never change them. */
-export const invoices = sqliteTable(
+export const invoices = pgTable(
   "invoices",
   {
     id: text("id").primaryKey(),
@@ -62,30 +68,30 @@ export const invoices = sqliteTable(
     vehicleId: text("vehicle_id")
       .notNull()
       .references(() => vehicles.id),
-    customer: text("customer", { mode: "json" }).$type<Customer>().notNull(),
+    customer: jsonb("customer").$type<Customer>().notNull(),
     vehicleLabel: text("vehicle_label").notNull(),
     plate: text("plate").notNull().default(""),
     vin: text("vin").notNull().default(""),
     mileage: integer("mileage"),
-    jobs: text("jobs", { mode: "json" }).$type<InvoiceJob[]>().notNull(),
-    taxRate: real("tax_rate").notNull(),
+    jobs: jsonb("jobs").$type<InvoiceJob[]>().notNull(),
+    taxRate: doublePrecision("tax_rate").notNull(),
     status: text("status", { enum: ["unpaid", "paid"] }).notNull(),
     createdAt: text("created_at").notNull(),
     paidAt: text("paid_at"),
   },
   (t) => [index("invoices_vehicle_idx").on(t.vehicleId)],
-)
+).enableRLS()
 
 /** Parts dealers the shop orders from */
-export const vendors = sqliteTable("vendors", {
+export const vendors = pgTable("vendors", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   website: text("website").notNull(),
-  /** Optional search link with {q} where the part name goes, e.g. https://example.com/search?q={q} */
+  /** Optional search link with placeholders such as {q} (see vendor-links.ts) */
   searchUrl: text("search_url").notNull().default(""),
   accountNumber: text("account_number").notNull().default(""),
   phone: text("phone").notNull().default(""),
   contactName: text("contact_name").notNull().default(""),
   notes: text("notes").notNull().default(""),
   createdAt: text("created_at").notNull(),
-})
+}).enableRLS()

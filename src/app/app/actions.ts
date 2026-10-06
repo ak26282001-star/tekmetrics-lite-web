@@ -147,9 +147,9 @@ export async function findVehicles(query: string): Promise<VehicleOption[]> {
     .where(
       q
         ? or(
-            compact ? sql`instr(${v.plate}, ${compact}) > 0` : undefined,
-            compact ? sql`instr(${v.vin}, ${compact}) > 0` : undefined,
-            sql`instr(lower(${v.customerName}), ${q.toLowerCase()}) > 0`,
+            compact ? sql`strpos(${v.plate}, ${compact}) > 0` : undefined,
+            compact ? sql`strpos(${v.vin}, ${compact}) > 0` : undefined,
+            sql`strpos(lower(${v.customerName}), ${q.toLowerCase()}) > 0`,
           )
         : undefined,
     )
@@ -251,7 +251,8 @@ export async function setJobStatus(
     .update(schema.jobs)
     .set({ status, completedAt: status === "completed" ? now() : null })
     .where(and(eq(schema.jobs.id, jobId), isNull(schema.jobs.invoiceId)))
-  if (result.rowsAffected === 0) return fail("Job not found or already invoiced")
+    .returning({ id: schema.jobs.id })
+  if (result.length === 0) return fail("Job not found or already invoiced")
   done()
   return ok(null)
 }
@@ -261,7 +262,8 @@ export async function deleteJob(jobId: string): Promise<ActionResult> {
   const result = await d
     .delete(schema.jobs)
     .where(and(eq(schema.jobs.id, jobId), isNull(schema.jobs.invoiceId)))
-  if (result.rowsAffected === 0) return fail("Job not found or already invoiced")
+    .returning({ id: schema.jobs.id })
+  if (result.length === 0) return fail("Job not found or already invoiced")
   done()
   return ok(null)
 }
@@ -279,73 +281,93 @@ export async function createInvoice(
     return fail("Select jobs to invoice")
   const d = await getDb()
 
-  try {
-    const id = await d.transaction(async (tx) => {
-      const [vehicleRow] = await tx.select().from(schema.vehicles).where(eq(schema.vehicles.id, vehicleId))
-      if (!vehicleRow) throw new InvoiceError("Vehicle not found")
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const id = await d.transaction(async (tx) => {
+        const [vehicleRow] = await tx.select().from(schema.vehicles).where(eq(schema.vehicles.id, vehicleId))
+        if (!vehicleRow) throw new InvoiceError("Vehicle not found")
 
-      const jobs = await tx
-        .select()
-        .from(schema.jobs)
-        .where(
-          and(
-            eq(schema.jobs.vehicleId, vehicleId),
-            inArray(schema.jobs.id, jobIds),
-            eq(schema.jobs.status, "completed"),
-            isNull(schema.jobs.invoiceId),
-          ),
-        )
-      if (jobs.length !== new Set(jobIds).size)
-        throw new InvoiceError("Some jobs are no longer ready to invoice — refresh and try again")
+        const jobs = await tx
+          .select()
+          .from(schema.jobs)
+          .where(
+            and(
+              eq(schema.jobs.vehicleId, vehicleId),
+              inArray(schema.jobs.id, jobIds),
+              eq(schema.jobs.status, "completed"),
+              isNull(schema.jobs.invoiceId),
+            ),
+          )
+        if (jobs.length !== new Set(jobIds).size)
+          throw new InvoiceError("Some jobs are no longer ready to invoice — refresh and try again")
 
-      const [{ last }] = await tx.select({ last: max(schema.invoices.number) }).from(schema.invoices)
-      const mileages = jobs.map((j) => j.mileage).filter((m): m is number => m !== null)
-      const invoice: Invoice = {
-        id: crypto.randomUUID(),
-        number: (last ?? FIRST_INVOICE_NUMBER - 1) + 1,
-        vehicleId,
-        customer: {
-          name: vehicleRow.customerName,
-          phone: vehicleRow.customerPhone,
-          email: vehicleRow.customerEmail,
-        },
-        vehicleLabel: vehicleLabel(vehicleRow),
-        plate: [vehicleRow.plateState, vehicleRow.plate].filter(Boolean).join(" "),
-        vin: vehicleRow.vin,
-        mileage: mileages.length ? Math.max(...mileages) : vehicleRow.mileage,
-        jobs: jobs.map((j) => ({
-          jobId: j.id,
-          title: j.title,
-          notes: j.notes,
-          technician: j.technician,
-          items: j.items,
-        })),
-        taxRate: SHOP.partsTaxRate,
-        status: "unpaid",
-        createdAt: now(),
-        paidAt: null,
-      }
-      await tx.insert(schema.invoices).values(invoice)
-      await tx
-        .update(schema.jobs)
-        .set({ invoiceId: invoice.id })
-        .where(
-          inArray(
-            schema.jobs.id,
-            jobs.map((j) => j.id),
-          ),
-        )
-      return invoice.id
-    })
-    done()
-    return ok({ id })
-  } catch (err) {
-    if (err instanceof InvoiceError) return fail(err.message)
-    throw err
+        const [{ last }] = await tx.select({ last: max(schema.invoices.number) }).from(schema.invoices)
+        const mileages = jobs.map((j) => j.mileage).filter((m): m is number => m !== null)
+        const invoice: Invoice = {
+          id: crypto.randomUUID(),
+          number: (last ?? FIRST_INVOICE_NUMBER - 1) + 1,
+          vehicleId,
+          customer: {
+            name: vehicleRow.customerName,
+            phone: vehicleRow.customerPhone,
+            email: vehicleRow.customerEmail,
+          },
+          vehicleLabel: vehicleLabel(vehicleRow),
+          plate: [vehicleRow.plateState, vehicleRow.plate].filter(Boolean).join(" "),
+          vin: vehicleRow.vin,
+          mileage: mileages.length ? Math.max(...mileages) : vehicleRow.mileage,
+          jobs: jobs.map((j) => ({
+            jobId: j.id,
+            title: j.title,
+            notes: j.notes,
+            technician: j.technician,
+            items: j.items,
+          })),
+          taxRate: SHOP.partsTaxRate,
+          status: "unpaid",
+          createdAt: now(),
+          paidAt: null,
+        }
+        await tx.insert(schema.invoices).values(invoice)
+        // Re-check "not yet invoiced" while claiming the jobs, so two people invoicing the same job
+        // at once can't both succeed (the second update sees the first one's claim and matches nothing)
+        const claimed = await tx
+          .update(schema.jobs)
+          .set({ invoiceId: invoice.id })
+          .where(
+            and(
+              inArray(
+                schema.jobs.id,
+                jobs.map((j) => j.id),
+              ),
+              isNull(schema.jobs.invoiceId),
+            ),
+          )
+          .returning({ id: schema.jobs.id })
+        if (claimed.length !== jobs.length)
+          throw new InvoiceError("These jobs were just invoiced by someone else — refresh to see it")
+        return invoice.id
+      })
+      done()
+      return ok({ id })
+    } catch (err) {
+      if (err instanceof InvoiceError) return fail(err.message)
+      // Two invoices created at the same moment can pick the same number; try again with the next one
+      if (isUniqueViolation(err) && attempt < 3) continue
+      throw err
+    }
   }
 }
 
 class InvoiceError extends Error {}
+
+/** Postgres unique_violation (23505), unwrapping Drizzle's query error if present */
+function isUniqueViolation(err: unknown): boolean {
+  for (let e = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
+    if ((e as { code?: unknown }).code === "23505") return true
+  }
+  return false
+}
 
 export async function setInvoiceStatus(invoiceId: string, status: "unpaid" | "paid"): Promise<ActionResult> {
   if (status !== "unpaid" && status !== "paid") return fail("Invalid status")
@@ -354,7 +376,8 @@ export async function setInvoiceStatus(invoiceId: string, status: "unpaid" | "pa
     .update(schema.invoices)
     .set({ status, paidAt: status === "paid" ? now() : null })
     .where(eq(schema.invoices.id, invoiceId))
-  if (result.rowsAffected === 0) return fail("Invoice not found")
+    .returning({ id: schema.invoices.id })
+  if (result.length === 0) return fail("Invoice not found")
   done()
   return ok(null)
 }
@@ -392,8 +415,12 @@ export async function saveVendor(id: string | null, raw: VendorInput): Promise<A
   const d = await getDb()
 
   if (id) {
-    const result = await d.update(schema.vendors).set(parsed.data).where(eq(schema.vendors.id, id))
-    if (result.rowsAffected === 0) return fail("Vendor not found")
+    const result = await d
+      .update(schema.vendors)
+      .set(parsed.data)
+      .where(eq(schema.vendors.id, id))
+      .returning({ id: schema.vendors.id })
+    if (result.length === 0) return fail("Vendor not found")
     done()
     return ok({ id })
   }
@@ -406,8 +433,11 @@ export async function saveVendor(id: string | null, raw: VendorInput): Promise<A
 
 export async function deleteVendor(id: string): Promise<ActionResult> {
   const d = await getDb()
-  const result = await d.delete(schema.vendors).where(eq(schema.vendors.id, id))
-  if (result.rowsAffected === 0) return fail("Vendor not found")
+  const result = await d
+    .delete(schema.vendors)
+    .where(eq(schema.vendors.id, id))
+    .returning({ id: schema.vendors.id })
+  if (result.length === 0) return fail("Vendor not found")
   await d.update(schema.jobs).set({ partsVendorId: null }).where(eq(schema.jobs.partsVendorId, id))
   done()
   return ok(null)
@@ -463,7 +493,8 @@ export async function setPartsStatus(jobId: string, raw: PartsStatusInput): Prom
       partsUpdatedAt: status ? now() : null,
     })
     .where(and(eq(schema.jobs.id, jobId), isNull(schema.jobs.invoiceId)))
-  if (result.rowsAffected === 0) return fail("Job not found or already invoiced")
+    .returning({ id: schema.jobs.id })
+  if (result.length === 0) return fail("Job not found or already invoiced")
   done()
   return ok(null)
 }
