@@ -17,9 +17,10 @@ import { SHOP } from "@/lib/shop/settings"
 import type { PendingJob } from "@/lib/shop/types"
 import { cn } from "@/lib/utils"
 import { PlateChip, StatusBadge } from "./common"
+import { NewJobOrderButton } from "./new-job-order"
 import { useServerAction } from "./use-server-action"
 
-type Filter = "all" | "in_progress" | "completed"
+export type Filter = "all" | "in_progress" | "completed"
 const UNASSIGNED = "__unassigned"
 const DAY = 86_400_000
 /** Jobs open longer than this are flagged */
@@ -30,16 +31,18 @@ export function PendingJobs({
   unpaidTotal,
   unpaidCount,
   now,
+  initialFilter = "all",
 }: {
   jobs: PendingJob[]
   unpaidTotal: number
   unpaidCount: number
   /** Server time, so "days waiting" renders the same on server and client */
   now: string
+  initialFilter?: Filter
 }) {
   const router = useRouter()
   const { run, pending, error } = useServerAction()
-  const [filter, setFilter] = React.useState<Filter>("all")
+  const [filter, setFilter] = React.useState<Filter>(initialFilter)
   const [tech, setTech] = React.useState("")
   const [query, setQuery] = React.useState("")
   const [busyId, setBusyId] = React.useState<string | null>(null)
@@ -82,11 +85,15 @@ export function PendingJobs({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pending jobs</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every job that hasn&apos;t been invoiced yet, across all vehicles — oldest first.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pending jobs</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every job that hasn&apos;t been invoiced yet, across all vehicles — oldest first. Mark a job
+            complete, then press <span className="font-medium text-foreground">Invoice</span>.
+          </p>
+        </div>
+        <NewJobOrderButton size="default" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -180,6 +187,7 @@ export function PendingJobs({
                 ? "Nothing in progress and nothing waiting to be invoiced."
                 : "Try a different technician or search."}
             </p>
+            {rows.length === 0 && <NewJobOrderButton className="mt-2" />}
           </div>
         ) : (
           <ul className="divide-y">

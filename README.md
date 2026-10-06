@@ -20,6 +20,9 @@ Open http://localhost:3000.
 
 ## Shop app (`/app`)
 
+**Everyday flow:** press **New job order** (top right, on every page) → pick the vehicle by plate, VIN or customer name, or add a new one → enter the job. When the work is done, mark it complete and press **Invoice** (on Pending jobs, or **Create invoice** on the Invoices page).
+
+
 - **Vehicle finder** (`/app`) — search by license plate or VIN (partial matches, e.g. last 6 of the VIN). Add a new vehicle when there's no match; **Decode** fills year/make/model from the VIN via the free [NHTSA vPIC API](https://vpic.nhtsa.dot.gov/api/).
 - **Pending jobs** (`/app/jobs`) — every job not yet invoiced, across all vehicles, oldest first. Filter by status or technician, search by plate/customer, mark jobs complete or invoice them in one click.
 - **Vehicle page** (`/app/vehicles/[id]`) — customer details and job history. Add jobs with labor and parts lines, mark them complete, then select completed jobs to **create an invoice**.

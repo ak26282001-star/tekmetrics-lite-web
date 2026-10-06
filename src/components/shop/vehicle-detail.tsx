@@ -119,7 +119,15 @@ export function VehicleDetail({
       )}
 
       {inProgress.length > 0 && (
-        <JobSection title="In progress" count={inProgress.length}>
+        <JobSection
+          title="In progress"
+          count={inProgress.length}
+          action={
+            readyToInvoice.length === 0 && (
+              <p className="text-xs text-muted-foreground">Mark a job complete to invoice it.</p>
+            )
+          }
+        >
           {inProgress.map((job) => (
             <JobCard
               key={job.id}

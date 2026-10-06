@@ -54,7 +54,7 @@ export function Navbar() {
 
         <div className="hidden items-center gap-2 lg:flex">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/app">Sign in</Link>
+            <Link href="/app">Open app</Link>
           </Button>
           <Button size="sm" asChild>
             <Link href="#cta">Start free trial</Link>
@@ -89,7 +89,7 @@ export function Navbar() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="outline" asChild>
-              <Link href="/app">Sign in</Link>
+              <Link href="/app">Open app</Link>
             </Button>
             <Button asChild>
               <Link href="#cta" onClick={() => setOpen(false)}>

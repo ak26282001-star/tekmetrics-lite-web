@@ -7,6 +7,7 @@ import { ExternalLink } from "lucide-react"
 import { Logo } from "@/components/landing/logo"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { NewJobOrderButton } from "./new-job-order"
 
 const nav = [
   { href: "/app", label: "Finder" },
@@ -36,17 +37,15 @@ export function AppHeader() {
             </Button>
           ))}
         </nav>
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="ml-auto hidden text-muted-foreground sm:inline-flex"
-        >
-          <Link href="/">
-            Website
-            <ExternalLink />
-          </Link>
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild className="hidden text-muted-foreground lg:inline-flex">
+            <Link href="/">
+              Website
+              <ExternalLink />
+            </Link>
+          </Button>
+          <NewJobOrderButton compact className="shrink-0 max-sm:size-8 max-sm:px-0" />
+        </div>
       </div>
     </header>
   )

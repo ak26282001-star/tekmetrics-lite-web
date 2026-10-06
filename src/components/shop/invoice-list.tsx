@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { FileText } from "lucide-react"
+import { FilePlus2, FileText } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { computeTotals, formatDate, formatMoney } from "@/lib/shop/money"
@@ -27,12 +28,20 @@ export function InvoiceList({ invoices }: { invoices: Invoice[] }) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Invoices</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create invoices from completed jobs on a vehicle&apos;s page.
+            Invoices are made from completed jobs. Press Create invoice to pick the jobs to bill.
           </p>
         </div>
-        <div className="rounded-lg border bg-card px-4 py-2 text-right">
-          <p className="text-xs text-muted-foreground">Outstanding</p>
-          <p className="text-lg font-semibold tabular-nums">{formatMoney(outstanding)}</p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg border bg-card px-4 py-2 text-right">
+            <p className="text-xs text-muted-foreground">Outstanding</p>
+            <p className="text-lg font-semibold tabular-nums">{formatMoney(outstanding)}</p>
+          </div>
+          <Button asChild size="lg">
+            <Link href="/app/jobs?status=completed">
+              <FilePlus2 />
+              Create invoice
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -42,7 +51,7 @@ export function InvoiceList({ invoices }: { invoices: Invoice[] }) {
             <FileText className="size-6 text-muted-foreground" />
             <p className="font-medium">No invoices yet</p>
             <p className="text-sm text-muted-foreground">
-              Find a vehicle, complete a job, then select it to invoice.
+              Complete a job, then press Create invoice to bill it.
             </p>
           </div>
         ) : (

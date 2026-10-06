@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { addVehicle, updateVehicle } from "@/app/app/actions"
+import { addVehicle, updateVehicle, type VehicleInput } from "@/app/app/actions"
 import type { Vehicle } from "@/lib/shop/types"
 import {
   decodeVin,
@@ -78,7 +78,7 @@ type VehicleFormProps = {
   vehicle?: Vehicle
   /** Prefill for a new vehicle, e.g. the plate or VIN that was searched */
   defaults?: Partial<FormState>
-  onSaved?: (id: string) => void
+  onSaved?: (id: string, saved: VehicleInput) => void
 }
 
 export function VehicleFormDialog({
@@ -105,7 +105,12 @@ export function VehicleFormDialog({
   )
 }
 
-function VehicleForm({ vehicle, defaults, onSaved, onClose }: VehicleFormProps & { onClose: () => void }) {
+export function VehicleForm({
+  vehicle,
+  defaults,
+  onSaved,
+  onClose,
+}: VehicleFormProps & { onClose: () => void }) {
   const [form, setForm] = React.useState<FormState>(() =>
     vehicle ? fromVehicle(vehicle) : { ...empty, ...defaults },
   )
@@ -161,7 +166,7 @@ function VehicleForm({ vehicle, defaults, onSaved, onClose }: VehicleFormProps &
     setErrors(next)
     if (Object.keys(next).length) return
 
-    const data = {
+    const data: VehicleInput = {
       plate,
       plateState: form.plateState.trim().toUpperCase(),
       vin,
@@ -183,7 +188,7 @@ function VehicleForm({ vehicle, defaults, onSaved, onClose }: VehicleFormProps &
       run(
         () => updateVehicle(vehicle.id, data),
         () => {
-          onSaved?.(vehicle.id)
+          onSaved?.(vehicle.id, data)
           onClose()
         },
       )
@@ -191,7 +196,7 @@ function VehicleForm({ vehicle, defaults, onSaved, onClose }: VehicleFormProps &
       run(
         () => addVehicle(data),
         ({ id }) => {
-          onSaved?.(id)
+          onSaved?.(id, data)
           onClose()
         },
       )

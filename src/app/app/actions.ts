@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { and, eq, inArray, isNull, lt, max, ne, or } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, lt, max, ne, or, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { getDb, schema } from "@/db"
@@ -113,6 +113,49 @@ export async function updateVehicle(id: string, raw: VehicleInput): Promise<Acti
   await d.update(schema.vehicles).set(vehicleColumns(v)).where(eq(schema.vehicles.id, id))
   done()
   return ok(null)
+}
+
+export type VehicleOption = {
+  id: string
+  label: string
+  plate: string
+  plateState: string
+  vin: string
+  customerName: string
+  mileage: number | null
+}
+
+/** Search vehicles by plate, VIN or customer name (most recent first when the query is empty). */
+export async function findVehicles(query: string): Promise<VehicleOption[]> {
+  const q = String(query ?? "")
+    .trim()
+    .slice(0, 40)
+  const compact = normalizePlate(q) // plates and VINs are stored uppercase without spaces
+  const d = await getDb()
+  const v = schema.vehicles
+  const rows = await d
+    .select()
+    .from(v)
+    .where(
+      q
+        ? or(
+            compact ? sql`instr(${v.plate}, ${compact}) > 0` : undefined,
+            compact ? sql`instr(${v.vin}, ${compact}) > 0` : undefined,
+            sql`instr(lower(${v.customerName}), ${q.toLowerCase()}) > 0`,
+          )
+        : undefined,
+    )
+    .orderBy(desc(v.createdAt))
+    .limit(8)
+  return rows.map((r) => ({
+    id: r.id,
+    label: vehicleLabel(r),
+    plate: r.plate,
+    plateState: r.plateState,
+    vin: r.vin,
+    customerName: r.customerName,
+    mileage: r.mileage,
+  }))
 }
 
 // -------------------------------------------------------------------- jobs

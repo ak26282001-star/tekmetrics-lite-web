@@ -101,7 +101,13 @@ export function JobDialog({
   )
 }
 
-function JobForm({ vehicleId, vehicleMileage, job, onClose }: JobFormProps & { onClose: () => void }) {
+export function JobForm({
+  vehicleId,
+  vehicleMileage,
+  job,
+  onClose,
+  onSaved,
+}: JobFormProps & { onClose: () => void; onSaved?: () => void }) {
   const [title, setTitle] = React.useState(job?.title ?? "")
   const [technician, setTechnician] = React.useState(job?.technician ?? "")
   const [mileage, setMileage] = React.useState(job?.mileage?.toString() ?? vehicleMileage?.toString() ?? "")
@@ -155,7 +161,10 @@ function JobForm({ vehicleId, vehicleMileage, job, onClose }: JobFormProps & { o
           notes: notes.trim(),
           items: parsed,
         }),
-      onClose,
+      () => {
+        onSaved?.()
+        onClose()
+      },
     )
   }
 
