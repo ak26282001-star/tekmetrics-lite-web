@@ -21,23 +21,33 @@ import { useServerAction } from "./use-server-action"
 type OrderJob = Pick<Job, "id" | "title" | "items" | "partsStatus" | "partsVendorId" | "partsNote">
 type OrderVehicle = Pick<Vehicle, "year" | "make" | "model" | "trim" | "vin" | "plate" | "plateState">
 
+/**
+ * Opens the order-parts dialog for a vehicle. Pass the vehicle's open (uninvoiced) jobs so the order
+ * can be tracked on one of them; with no jobs it still lets you order, just without status tracking.
+ */
 export function OrderPartsButton({
-  job,
+  jobs,
+  jobId,
   vehicle,
   vendors,
   size = "sm",
   variant = "outline",
+  className,
 }: {
-  job: OrderJob
+  jobs: OrderJob[]
+  /** Preselect this job (e.g. when opened from a job card) */
+  jobId?: string
   vehicle: OrderVehicle
   vendors: Vendor[]
   size?: "sm" | "default"
   variant?: "outline" | "default" | "ghost"
+  className?: string
 }) {
   const [open, setOpen] = React.useState(false)
+  const preselected = jobs.find((j) => j.id === jobId)
   return (
     <>
-      <Button size={size} variant={variant} onClick={() => setOpen(true)}>
+      <Button size={size} variant={variant} className={className} onClick={() => setOpen(true)}>
         <ShoppingCart />
         Order parts
       </Button>
@@ -46,33 +56,59 @@ export function OrderPartsButton({
           <DialogHeader>
             <DialogTitle>Order parts</DialogTitle>
             <DialogDescription>
-              For <span className="font-medium text-foreground">{job.title}</span>. The vehicle is filled in
-              for you.
+              {preselected ? (
+                <>
+                  For <span className="font-medium text-foreground">{preselected.title}</span>.{" "}
+                </>
+              ) : null}
+              The vehicle is filled in for you.
             </DialogDescription>
           </DialogHeader>
-          <OrderParts job={job} vehicle={vehicle} vendors={vendors} onDone={() => setOpen(false)} />
+          <OrderParts
+            jobs={jobs}
+            initialJobId={preselected?.id ?? jobs[0]?.id}
+            vehicle={vehicle}
+            vendors={vendors}
+            onDone={() => setOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </>
   )
 }
 
+const partNames = (job?: OrderJob) => [
+  ...new Set((job?.items ?? []).filter((i) => i.type === "part").map((i) => i.description)),
+]
+
 function OrderParts({
-  job,
+  jobs,
+  initialJobId,
   vehicle,
   vendors,
   onDone,
 }: {
-  job: OrderJob
+  jobs: OrderJob[]
+  initialJobId?: string
   vehicle: OrderVehicle
   vendors: Vendor[]
   onDone: () => void
 }) {
-  const partItems = [...new Set(job.items.filter((i) => i.type === "part").map((i) => i.description))]
-  const [part, setPart] = React.useState(partItems[0] ?? "")
+  const [jobId, setJobId] = React.useState(initialJobId ?? "")
+  const job = jobs.find((j) => j.id === jobId)
+  const partItems = partNames(job)
+  const [part, setPart] = React.useState(() => partNames(jobs.find((j) => j.id === initialJobId))[0] ?? "")
   const [copied, setCopied] = React.useState(false)
-  const [vendorId, setVendorId] = React.useState(job.partsVendorId ?? "")
-  const [note, setNote] = React.useState(job.partsNote)
+  const [vendorId, setVendorId] = React.useState(job?.partsVendorId ?? "")
+  const [note, setNote] = React.useState(job?.partsNote ?? "")
+
+  function selectJob(id: string) {
+    const next = jobs.find((j) => j.id === id)
+    setJobId(id)
+    setPart(partNames(next)[0] ?? part)
+    setVendorId(next?.partsVendorId ?? vendorId)
+    setNote(next?.partsNote ?? "")
+  }
   const { run, pending, error } = useServerAction()
 
   const ctx = {
@@ -92,6 +128,7 @@ function OrderParts({
   }
 
   function save(status: "needed" | "ordered" | "received" | null, after?: () => void) {
+    if (!job) return
     run(() => setPartsStatus(job.id, { status, vendorId: vendorId || null, note }), after)
   }
 
@@ -102,10 +139,12 @@ function OrderParts({
         <div className="flex flex-wrap items-center gap-3">
           <PlateChip plate={vehicle.plate} state={vehicle.plateState} />
           <p className="font-semibold">{vehicleLabel(vehicle)}</p>
-          <PartsBadge
-            status={job.partsStatus}
-            vendorName={vendors.find((v) => v.id === job.partsVendorId)?.name}
-          />
+          {job && (
+            <PartsBadge
+              status={job.partsStatus}
+              vendorName={vendors.find((v) => v.id === job.partsVendorId)?.name}
+            />
+          )}
         </div>
         {vehicle.vin ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -124,6 +163,19 @@ function OrderParts({
           </p>
         )}
       </div>
+
+      {jobs.length > 1 && (
+        <div className="space-y-2">
+          <Label htmlFor="op-job">For job</Label>
+          <NativeSelect id="op-job" value={jobId} onChange={(e) => selectJob(e.target.value)}>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.title}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="op-part">Part needed</Label>
@@ -223,67 +275,103 @@ function OrderParts({
 
       <Separator />
 
-      {/* Track where the parts are */}
-      <div className="space-y-3">
-        <p className="text-sm font-medium">Parts status</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="op-vendor" className="text-xs text-muted-foreground">
-              Ordered from
-            </Label>
-            <NativeSelect id="op-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-              <option value="">—</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="op-note" className="text-xs text-muted-foreground">
-              Order # / ETA
-            </Label>
-            <Input
-              id="op-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="PO 48812, arriving 2pm"
-            />
-          </div>
-        </div>
+      {job ? (
+        <PartsStatusSection
+          job={job}
+          vendors={vendors}
+          vendorId={vendorId}
+          setVendorId={setVendorId}
+          note={note}
+          setNote={setNote}
+          pending={pending}
+          error={error}
+          save={(status) => save(status, onDone)}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          This vehicle has no open job. Add a job to track parts as needed → ordered → received.
+        </p>
+      )}
+    </div>
+  )
+}
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {job.partsStatus && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={pending}
-              onClick={() => save(null, onDone)}
-            >
-              Clear status
-            </Button>
-          )}
-          {job.partsStatus !== "needed" && job.partsStatus !== "ordered" && (
-            <Button type="button" variant="outline" disabled={pending} onClick={() => save("needed", onDone)}>
-              Mark needs parts
-            </Button>
-          )}
-          {job.partsStatus === "ordered" ? (
-            <Button type="button" disabled={pending} onClick={() => save("received", onDone)}>
-              {pending ? <Loader2 className="animate-spin" /> : <PackageCheck />}
-              Parts received
-            </Button>
-          ) : (
-            <Button type="button" disabled={pending} onClick={() => save("ordered", onDone)}>
-              {pending ? <Loader2 className="animate-spin" /> : <Check />}
-              Mark parts ordered
-            </Button>
-          )}
+function PartsStatusSection({
+  job,
+  vendors,
+  vendorId,
+  setVendorId,
+  note,
+  setNote,
+  pending,
+  error,
+  save,
+}: {
+  job: OrderJob
+  vendors: Vendor[]
+  vendorId: string
+  setVendorId: (id: string) => void
+  note: string
+  setNote: (note: string) => void
+  pending: boolean
+  error: string | null
+  save: (status: "needed" | "ordered" | "received" | null) => void
+}) {
+  // Track where the parts are
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium">Parts status</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="op-vendor" className="text-xs text-muted-foreground">
+            Ordered from
+          </Label>
+          <NativeSelect id="op-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+            <option value="">—</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </NativeSelect>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="op-note" className="text-xs text-muted-foreground">
+            Order # / ETA
+          </Label>
+          <Input
+            id="op-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="PO 48812, arriving 2pm"
+          />
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {job.partsStatus && (
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => save(null)}>
+            Clear status
+          </Button>
+        )}
+        {job.partsStatus !== "needed" && job.partsStatus !== "ordered" && (
+          <Button type="button" variant="outline" disabled={pending} onClick={() => save("needed")}>
+            Mark needs parts
+          </Button>
+        )}
+        {job.partsStatus === "ordered" ? (
+          <Button type="button" disabled={pending} onClick={() => save("received")}>
+            {pending ? <Loader2 className="animate-spin" /> : <PackageCheck />}
+            Parts received
+          </Button>
+        ) : (
+          <Button type="button" disabled={pending} onClick={() => save("ordered")}>
+            {pending ? <Loader2 className="animate-spin" /> : <Check />}
+            Mark parts ordered
+          </Button>
+        )}
       </div>
     </div>
   )

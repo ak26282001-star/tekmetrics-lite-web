@@ -246,14 +246,13 @@ export function PendingJobs({
                   <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                     <p className="font-semibold tabular-nums sm:w-24 sm:text-right">{formatMoney(total)}</p>
                     <div className="flex flex-wrap items-center justify-end gap-1">
-                      {job.status === "in_progress" && (
-                        <OrderPartsButton
-                          job={job}
-                          vehicle={job.vehicle}
-                          vendors={vendors}
-                          variant={job.partsStatus === "needed" ? "default" : "outline"}
-                        />
-                      )}
+                      <OrderPartsButton
+                        jobs={[job]}
+                        jobId={job.id}
+                        vehicle={job.vehicle}
+                        vendors={vendors}
+                        variant={job.partsStatus === "needed" ? "default" : "outline"}
+                      />
                       {job.status === "in_progress" ? (
                         <Button
                           size="sm"

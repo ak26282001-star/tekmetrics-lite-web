@@ -102,10 +102,19 @@ export function VehicleDetail({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
-        <Button onClick={() => setJobDialog({ open: true })}>
-          <Plus />
-          Add job
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {/* Always available: orders for this vehicle, tracked on one of its open jobs */}
+          <OrderPartsButton
+            jobs={[...inProgress, ...readyToInvoice]}
+            vehicle={vehicle}
+            vendors={vendors}
+            size="default"
+          />
+          <Button onClick={() => setJobDialog({ open: true })}>
+            <Plus />
+            Add job
+          </Button>
+        </div>
       </div>
 
       {jobs.length === 0 && (
@@ -141,7 +150,8 @@ export function VehicleDetail({
               actions={
                 <>
                   <OrderPartsButton
-                    job={job}
+                    jobs={[job]}
+                    jobId={job.id}
                     vehicle={vehicle}
                     vendors={vendors}
                     variant={job.partsStatus === "needed" ? "default" : "outline"}
@@ -184,16 +194,20 @@ export function VehicleDetail({
               onSelect={(c) => toggle(job.id, c)}
               onEdit={() => setJobDialog({ open: true, job })}
               onDelete={() => removeJob(job)}
+              vendorName={vendors.find((v) => v.id === job.partsVendorId)?.name}
               actions={
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={() => run(() => setJobStatus(job.id, "in_progress"))}
-                >
-                  <RotateCcw />
-                  Reopen
-                </Button>
+                <>
+                  <OrderPartsButton jobs={[job]} jobId={job.id} vehicle={vehicle} vendors={vendors} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => run(() => setJobStatus(job.id, "in_progress"))}
+                  >
+                    <RotateCcw />
+                    Reopen
+                  </Button>
+                </>
               }
             />
           ))}
