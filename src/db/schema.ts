@@ -39,8 +39,18 @@ export const jobs = sqliteTable(
     createdAt: text("created_at").notNull(),
     completedAt: text("completed_at"),
     invoiceId: text("invoice_id"),
+    /** Parts workflow: null = no parts needed / not tracked */
+    partsStatus: text("parts_status", { enum: ["needed", "ordered", "received"] }),
+    partsVendorId: text("parts_vendor_id"),
+    /** Free text such as the vendor's order number or ETA */
+    partsNote: text("parts_note").notNull().default(""),
+    partsUpdatedAt: text("parts_updated_at"),
   },
-  (t) => [index("jobs_vehicle_idx").on(t.vehicleId), index("jobs_invoice_idx").on(t.invoiceId)],
+  (t) => [
+    index("jobs_vehicle_idx").on(t.vehicleId),
+    index("jobs_invoice_idx").on(t.invoiceId),
+    index("jobs_parts_status_idx").on(t.partsStatus),
+  ],
 )
 
 /** Invoices snapshot the customer, vehicle and jobs so later edits never change them. */
@@ -65,3 +75,17 @@ export const invoices = sqliteTable(
   },
   (t) => [index("invoices_vehicle_idx").on(t.vehicleId)],
 )
+
+/** Parts dealers the shop orders from */
+export const vendors = sqliteTable("vendors", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  website: text("website").notNull(),
+  /** Optional search link with {q} where the part name goes, e.g. https://example.com/search?q={q} */
+  searchUrl: text("search_url").notNull().default(""),
+  accountNumber: text("account_number").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  contactName: text("contact_name").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+})

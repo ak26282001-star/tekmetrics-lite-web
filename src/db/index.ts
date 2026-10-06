@@ -53,6 +53,7 @@ async function prepare(db: Db) {
         ),
         db.insert(schema.jobs).values(seed.jobs),
         db.insert(schema.invoices).values(seed.invoices),
+        db.insert(schema.vendors).values(seed.vendors),
       ])
     }
   }

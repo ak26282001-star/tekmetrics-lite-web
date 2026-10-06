@@ -33,6 +33,8 @@ export type LineItem = {
 
 export type JobStatus = "in_progress" | "completed"
 
+export type PartsStatus = "needed" | "ordered" | "received"
+
 export type Job = {
   id: string
   vehicleId: string
@@ -45,6 +47,10 @@ export type Job = {
   createdAt: string
   completedAt: string | null
   invoiceId: string | null
+  partsStatus: PartsStatus | null
+  partsVendorId: string | null
+  partsNote: string
+  partsUpdatedAt: string | null
 }
 
 export type InvoiceStatus = "unpaid" | "paid"
@@ -74,10 +80,24 @@ export type Invoice = {
   paidAt: string | null
 }
 
+export type Vendor = {
+  id: string
+  name: string
+  website: string
+  /** Search link with a {q} placeholder for the part name; empty if the vendor has none */
+  searchUrl: string
+  accountNumber: string
+  phone: string
+  contactName: string
+  notes: string
+  createdAt: string
+}
+
 export type ShopData = {
   vehicles: Vehicle[]
   jobs: Job[]
   invoices: Invoice[]
+  vendors: Vendor[]
 }
 
 /** A vehicle with its pending-job counts, for the finder */

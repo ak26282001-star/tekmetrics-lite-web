@@ -26,6 +26,8 @@ Open http://localhost:3000.
 - **Vehicle finder** (`/app`) — search by license plate or VIN (partial matches, e.g. last 6 of the VIN). Add a new vehicle when there's no match; **Decode** fills year/make/model from the VIN via the free [NHTSA vPIC API](https://vpic.nhtsa.dot.gov/api/).
 - **Pending jobs** (`/app/jobs`) — every job not yet invoiced, across all vehicles, oldest first. Filter by status or technician, search by plate/customer, mark jobs complete or invoice them in one click.
 - **Vehicle page** (`/app/vehicles/[id]`) — customer details and job history. Add jobs with labor and parts lines, mark them complete, then select completed jobs to **create an invoice**.
+- **Order parts** — on any working job (vehicle page or Pending jobs), opens your parts vendors with that job's vehicle filled in, copies the VIN for the vendor's lookup, and tracks the job's parts: **Needs parts → Parts ordered (vendor, PO/ETA) → Received**. Pending jobs has a **Waiting on parts** filter.
+- **Parts vendors** (`/app/vendors`) — your dealers' websites, account numbers, phones and reps, plus a search across all of them. To let the app fill in the vehicle and part automatically, search the vendor's site for `brakepads` and paste the resulting link into the vendor's **Search link**; the app turns it into a template (placeholders: `{q}` = vehicle + part, `{part}`, `{year}`, `{make}`, `{model}`, `{vin}`). Vendor sites open in a new tab — they can't be embedded.
 - **Invoices** (`/app/invoices`) — list with payment status; each invoice is printable / savable as PDF and can be marked paid.
 
 > ⚠️ There is no login yet — anyone who can reach the site can see and change shop data. Add authentication before deploying publicly.

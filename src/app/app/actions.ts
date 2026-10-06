@@ -8,6 +8,14 @@ import { getDb, schema } from "@/db"
 import { SHOP } from "@/lib/shop/settings"
 import { vehicleLabel } from "@/lib/shop/format"
 import type { Invoice } from "@/lib/shop/types"
+import {
+  COMMON_VENDORS,
+  PLACEHOLDERS,
+  hasPlaceholder,
+  isHttpUrl,
+  normalizeUrl,
+  toSearchTemplate,
+} from "@/lib/shop/vendor-links"
 import { isVinFormatValid, normalizePlate, normalizeVin } from "@/lib/shop/vin"
 
 // Server Actions are public POST endpoints: validate every input here, not just in the UI.
@@ -347,6 +355,115 @@ export async function setInvoiceStatus(invoiceId: string, status: "unpaid" | "pa
     .set({ status, paidAt: status === "paid" ? now() : null })
     .where(eq(schema.invoices.id, invoiceId))
   if (result.rowsAffected === 0) return fail("Invoice not found")
+  done()
+  return ok(null)
+}
+
+// ----------------------------------------------------------------- vendors
+
+const vendorInput = z.object({
+  name: z.string().trim().min(1, "Vendor name is required").max(80),
+  website: z
+    .string()
+    .max(500)
+    .transform(normalizeUrl)
+    .refine((v) => v !== "", "Website is required")
+    .refine(isHttpUrl, "Enter a valid website, e.g. napaonline.com"),
+  searchUrl: z
+    .string()
+    .max(500)
+    .transform(toSearchTemplate)
+    .refine((v) => v === "" || isHttpUrl(v), "Search link must be a web address")
+    .refine(
+      (v) => v === "" || hasPlaceholder(v),
+      `Search link must contain the word you searched for, or a placeholder like ${PLACEHOLDERS.join(", ")}`,
+    ),
+  accountNumber: z.string().trim().max(60),
+  phone: z.string().trim().max(30),
+  contactName: z.string().trim().max(80),
+  notes: z.string().trim().max(1000),
+})
+
+export type VendorInput = z.input<typeof vendorInput>
+
+export async function saveVendor(id: string | null, raw: VendorInput): Promise<ActionResult<{ id: string }>> {
+  const parsed = vendorInput.safeParse(raw)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const d = await getDb()
+
+  if (id) {
+    const result = await d.update(schema.vendors).set(parsed.data).where(eq(schema.vendors.id, id))
+    if (result.rowsAffected === 0) return fail("Vendor not found")
+    done()
+    return ok({ id })
+  }
+
+  const newId = crypto.randomUUID()
+  await d.insert(schema.vendors).values({ id: newId, ...parsed.data, createdAt: now() })
+  done()
+  return ok({ id: newId })
+}
+
+export async function deleteVendor(id: string): Promise<ActionResult> {
+  const d = await getDb()
+  const result = await d.delete(schema.vendors).where(eq(schema.vendors.id, id))
+  if (result.rowsAffected === 0) return fail("Vendor not found")
+  await d.update(schema.jobs).set({ partsVendorId: null }).where(eq(schema.jobs.partsVendorId, id))
+  done()
+  return ok(null)
+}
+
+/** Adds any of the common dealers the shop doesn't have yet (matched by website). */
+export async function addCommonVendors(): Promise<ActionResult<{ added: number }>> {
+  const d = await getDb()
+  const existing = new Set(
+    (await d.select({ website: schema.vendors.website }).from(schema.vendors)).map((v) => v.website),
+  )
+  const toAdd = COMMON_VENDORS.filter((v) => !existing.has(v.website))
+  if (toAdd.length) {
+    await d
+      .insert(schema.vendors)
+      .values(toAdd.map((v) => ({ id: crypto.randomUUID(), ...v, createdAt: now() })))
+  }
+  done()
+  return ok({ added: toAdd.length })
+}
+
+// ------------------------------------------------------------ parts status
+
+const partsStatusInput = z.object({
+  status: z.enum(["needed", "ordered", "received"]).nullable(),
+  vendorId: z.string().max(100).nullable(),
+  note: z.string().trim().max(300),
+})
+
+export type PartsStatusInput = z.input<typeof partsStatusInput>
+
+/** Updates a job's parts status (needs parts → ordered → received). */
+export async function setPartsStatus(jobId: string, raw: PartsStatusInput): Promise<ActionResult> {
+  const parsed = partsStatusInput.safeParse(raw)
+  if (!parsed.success) return fail(firstIssue(parsed.error))
+  const { status, vendorId, note } = parsed.data
+  const d = await getDb()
+
+  if (vendorId) {
+    const [vendor] = await d
+      .select({ id: schema.vendors.id })
+      .from(schema.vendors)
+      .where(eq(schema.vendors.id, vendorId))
+    if (!vendor) return fail("Vendor not found")
+  }
+
+  const result = await d
+    .update(schema.jobs)
+    .set({
+      partsStatus: status,
+      partsVendorId: status ? vendorId : null,
+      partsNote: status ? note : "",
+      partsUpdatedAt: status ? now() : null,
+    })
+    .where(and(eq(schema.jobs.id, jobId), isNull(schema.jobs.invoiceId)))
+  if (result.rowsAffected === 0) return fail("Job not found or already invoiced")
   done()
   return ok(null)
 }

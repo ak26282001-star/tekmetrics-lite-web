@@ -1,4 +1,5 @@
-import type { ShopData } from "./types"
+import type { ShopData, Vendor } from "./types"
+import { COMMON_VENDORS } from "./vendor-links"
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString()
 
@@ -67,6 +68,10 @@ export function createSeedData(): ShopData {
         createdAt: daysAgo(90),
         completedAt: daysAgo(90),
         invoiceId: "inv-1001",
+        partsStatus: null,
+        partsVendorId: null,
+        partsNote: "",
+        partsUpdatedAt: null,
       },
       {
         id: "job-2",
@@ -91,6 +96,10 @@ export function createSeedData(): ShopData {
         createdAt: daysAgo(1),
         completedAt: daysAgo(0),
         invoiceId: null,
+        partsStatus: null,
+        partsVendorId: null,
+        partsNote: "",
+        partsUpdatedAt: null,
       },
       {
         id: "job-3",
@@ -104,8 +113,13 @@ export function createSeedData(): ShopData {
         createdAt: daysAgo(0),
         completedAt: null,
         invoiceId: null,
+        partsStatus: "needed",
+        partsVendorId: null,
+        partsNote: "Misfire on cyl 3 — needs ignition coil + plugs",
+        partsUpdatedAt: daysAgo(0),
       },
     ],
+    vendors: COMMON_VENDORS.map((v, i) => vendor(`ven-${i + 1}`, v.name, v.website)),
     invoices: [
       {
         id: "inv-1001",
@@ -142,5 +156,19 @@ export function createSeedData(): ShopData {
         paidAt: daysAgo(90),
       },
     ],
+  }
+}
+
+function vendor(id: string, name: string, website: string): Vendor {
+  return {
+    id,
+    name,
+    website,
+    searchUrl: "",
+    accountNumber: "",
+    phone: "",
+    contactName: "",
+    notes: "",
+    createdAt: daysAgo(200),
   }
 }

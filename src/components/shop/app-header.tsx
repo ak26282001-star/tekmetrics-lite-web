@@ -13,6 +13,7 @@ const nav = [
   { href: "/app", label: "Finder" },
   { href: "/app/jobs", label: "Pending jobs" },
   { href: "/app/invoices", label: "Invoices" },
+  { href: "/app/vendors", label: "Vendors" },
 ]
 
 export function AppHeader() {
@@ -24,7 +25,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl print:hidden">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
         <Logo href="/app" compact className="shrink-0" />
-        <nav className="flex min-w-0 items-center gap-1">
+        <nav className="-mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
           {nav.map((item) => (
             <Button key={item.href} variant="ghost" size="sm" asChild>
               <Link

@@ -45,3 +45,26 @@ export function PlateChip({ plate, state }: { plate: string; state?: string }) {
     </span>
   )
 }
+
+const partsLabels = {
+  needed: { tone: "warning", label: "Needs parts" },
+  ordered: { tone: "info", label: "Parts ordered" },
+  received: { tone: "success", label: "Parts received" },
+} as const
+
+export function PartsBadge({
+  status,
+  vendorName,
+}: {
+  status: "needed" | "ordered" | "received" | null
+  vendorName?: string
+}) {
+  if (!status) return null
+  const { tone, label } = partsLabels[status]
+  return (
+    <StatusBadge tone={tone}>
+      {label}
+      {status === "ordered" && vendorName ? ` · ${vendorName}` : ""}
+    </StatusBadge>
+  )
+}

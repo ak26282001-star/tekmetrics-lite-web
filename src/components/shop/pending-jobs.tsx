@@ -14,13 +14,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { vehicleLabel } from "@/lib/shop/format"
 import { computeTotals, formatMoney } from "@/lib/shop/money"
 import { SHOP } from "@/lib/shop/settings"
-import type { PendingJob } from "@/lib/shop/types"
+import type { PendingJob, Vendor } from "@/lib/shop/types"
 import { cn } from "@/lib/utils"
-import { PlateChip, StatusBadge } from "./common"
+import { PartsBadge, PlateChip, StatusBadge } from "./common"
 import { NewJobOrderButton } from "./new-job-order"
+import { OrderPartsButton } from "./order-parts-dialog"
 import { useServerAction } from "./use-server-action"
 
-export type Filter = "all" | "in_progress" | "completed"
+export type Filter = "all" | "in_progress" | "parts" | "completed"
 const UNASSIGNED = "__unassigned"
 const DAY = 86_400_000
 /** Jobs open longer than this are flagged */
@@ -32,6 +33,7 @@ export function PendingJobs({
   unpaidCount,
   now,
   initialFilter = "all",
+  vendors,
 }: {
   jobs: PendingJob[]
   unpaidTotal: number
@@ -39,6 +41,7 @@ export function PendingJobs({
   /** Server time, so "days waiting" renders the same on server and client */
   now: string
   initialFilter?: Filter
+  vendors: Vendor[]
 }) {
   const router = useRouter()
   const { run, pending, error } = useServerAction()
@@ -56,12 +59,17 @@ export function PendingJobs({
 
   const inProgress = rows.filter((r) => r.job.status === "in_progress")
   const ready = rows.filter((r) => r.job.status === "completed")
+  // Working jobs held up by parts (needed or on order)
+  const waiting = inProgress.filter((r) => r.job.partsStatus === "needed" || r.job.partsStatus === "ordered")
+  const vendorName = (id: string | null) => vendors.find((v) => v.id === id)?.name
   const readyValue = ready.reduce((sum, r) => sum + r.total, 0)
   const technicians = [...new Set(jobs.map((j) => j.technician).filter(Boolean))].sort()
 
   const q = query.trim().toLowerCase()
   const visible = rows.filter(({ job }) => {
-    if (filter !== "all" && job.status !== filter) return false
+    if (filter === "parts") {
+      if (!waiting.some((r) => r.job.id === job.id)) return false
+    } else if (filter !== "all" && job.status !== filter) return false
     if (tech === UNASSIGNED ? job.technician !== "" : tech && job.technician !== tech) return false
     if (!q) return true
     const v = job.vehicle
@@ -101,7 +109,7 @@ export function PendingJobs({
           icon={Wrench}
           label="In progress"
           value={String(inProgress.length)}
-          hint={`${inProgress.filter((r) => r.days >= STALE_DAYS).length} open ${STALE_DAYS}+ days`}
+          hint={`${waiting.length} waiting on parts · ${inProgress.filter((r) => r.days >= STALE_DAYS).length} open ${STALE_DAYS}+ days`}
           onClick={() => setFilter("in_progress")}
           active={filter === "in_progress"}
         />
@@ -135,6 +143,10 @@ export function PendingJobs({
               </TabsTrigger>
               <TabsTrigger value="in_progress" className="px-3">
                 In progress <Count n={inProgress.length} />
+              </TabsTrigger>
+              <TabsTrigger value="parts" className="px-3">
+                <span className="sm:hidden">Parts</span>
+                <span className="hidden sm:inline">Waiting on parts</span> <Count n={waiting.length} />
               </TabsTrigger>
               <TabsTrigger value="completed" className="px-3">
                 <span className="sm:hidden">Ready</span>
@@ -203,6 +215,7 @@ export function PendingJobs({
                       ) : (
                         <StatusBadge tone="success">Ready to invoice</StatusBadge>
                       )}
+                      <PartsBadge status={job.partsStatus} vendorName={vendorName(job.partsVendorId)} />
                       <span
                         className={cn(
                           "flex items-center gap-1 text-xs",
@@ -224,12 +237,23 @@ export function PendingJobs({
                         <span className="text-muted-foreground">· {job.vehicle.customer.phone}</span>
                       )}
                     </Link>
-                    <p className="mt-1.5 text-xs text-muted-foreground">{job.technician || "Unassigned"}</p>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      {job.technician || "Unassigned"}
+                      {job.partsStatus && job.partsNote && ` · Parts: ${job.partsNote}`}
+                    </p>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 sm:justify-end">
+                  <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                     <p className="font-semibold tabular-nums sm:w-24 sm:text-right">{formatMoney(total)}</p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      {job.status === "in_progress" && (
+                        <OrderPartsButton
+                          job={job}
+                          vehicle={job.vehicle}
+                          vendors={vendors}
+                          variant={job.partsStatus === "needed" ? "default" : "outline"}
+                        />
+                      )}
                       {job.status === "in_progress" ? (
                         <Button
                           size="sm"

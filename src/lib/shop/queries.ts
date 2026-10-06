@@ -1,10 +1,10 @@
 import "server-only"
 
 import { connection } from "next/server"
-import { desc, eq, isNull } from "drizzle-orm"
+import { asc, desc, eq, isNull } from "drizzle-orm"
 
 import { getDb, schema } from "@/db"
-import type { Invoice, Job, PendingJob, Vehicle, VehicleSummary } from "./types"
+import type { Invoice, Job, PendingJob, Vehicle, VehicleSummary, Vendor } from "./types"
 
 type VehicleRow = typeof schema.vehicles.$inferSelect
 
@@ -87,4 +87,9 @@ export async function getUnpaidInvoiceTotals() {
     .select({ jobs: schema.invoices.jobs, taxRate: schema.invoices.taxRate })
     .from(schema.invoices)
     .where(eq(schema.invoices.status, "unpaid"))
+}
+
+export async function listVendors(): Promise<Vendor[]> {
+  const d = await db()
+  return d.select().from(schema.vendors).orderBy(asc(schema.vendors.name))
 }

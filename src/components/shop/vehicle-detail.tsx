@@ -24,10 +24,11 @@ import { computeTotals, formatDate, formatMoney } from "@/lib/shop/money"
 import { SHOP } from "@/lib/shop/settings"
 import { createInvoice, deleteJob, setJobStatus } from "@/app/app/actions"
 import { vehicleLabel } from "@/lib/shop/format"
-import type { Invoice, Job, Vehicle } from "@/lib/shop/types"
+import type { Invoice, Job, Vehicle, Vendor } from "@/lib/shop/types"
 import { cn } from "@/lib/utils"
-import { PlateChip, StatusBadge } from "./common"
+import { PartsBadge, PlateChip, StatusBadge } from "./common"
 import { JobDialog } from "./job-dialog"
+import { OrderPartsButton } from "./order-parts-dialog"
 import { useServerAction } from "./use-server-action"
 import { VehicleFormDialog } from "./vehicle-form-dialog"
 
@@ -35,10 +36,12 @@ export function VehicleDetail({
   vehicle,
   jobs,
   invoices,
+  vendors,
 }: {
   vehicle: Vehicle
   jobs: Job[]
   invoices: Invoice[]
+  vendors: Vendor[]
 }) {
   const router = useRouter()
   const [editingVehicle, setEditingVehicle] = React.useState(false)
@@ -134,16 +137,25 @@ export function VehicleDetail({
               job={job}
               onEdit={() => setJobDialog({ open: true, job })}
               onDelete={() => removeJob(job)}
+              vendorName={vendors.find((v) => v.id === job.partsVendorId)?.name}
               actions={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => run(() => setJobStatus(job.id, "completed"))}
-                >
-                  <CheckCircle2 />
-                  Mark complete
-                </Button>
+                <>
+                  <OrderPartsButton
+                    job={job}
+                    vehicle={vehicle}
+                    vendors={vendors}
+                    variant={job.partsStatus === "needed" ? "default" : "outline"}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => run(() => setJobStatus(job.id, "completed"))}
+                  >
+                    <CheckCircle2 />
+                    Mark complete
+                  </Button>
+                </>
               }
             />
           ))}
@@ -306,6 +318,7 @@ function JobCard({
   onEdit,
   onDelete,
   actions,
+  vendorName,
 }: {
   job: Job
   invoice?: Invoice
@@ -315,6 +328,7 @@ function JobCard({
   onEdit?: () => void
   onDelete?: () => void
   actions?: React.ReactNode
+  vendorName?: string
 }) {
   const totals = computeTotals(job.items, SHOP.partsTaxRate)
   const locked = Boolean(job.invoiceId)
@@ -342,6 +356,7 @@ function JobCard({
             ) : (
               <StatusBadge tone="success">Completed</StatusBadge>
             )}
+            {!job.invoiceId && <PartsBadge status={job.partsStatus} vendorName={vendorName} />}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatDate(job.completedAt ?? job.createdAt)}
@@ -354,6 +369,9 @@ function JobCard({
 
       <CardContent className="space-y-3 px-5">
         {job.notes && <p className="text-sm text-pretty">{job.notes}</p>}
+        {!job.invoiceId && job.partsStatus && job.partsNote && (
+          <p className="text-xs text-muted-foreground">Parts: {job.partsNote}</p>
+        )}
         {job.items.length > 0 && (
           <ul className="divide-y rounded-lg border text-sm">
             {job.items.map((item) => (
