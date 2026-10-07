@@ -11,10 +11,18 @@ import { createSeedData } from "@/lib/shop/seed"
 import * as schema from "./schema"
 
 /**
- * Postgres connection, e.g. Supabase. Set DATABASE_URL to the Supabase connection string
- * (Project → Connect → "Transaction pooler" for Vercel / serverless hosts).
+ * Postgres connection, e.g. Supabase. Either set DATABASE_URL to the Supabase connection string
+ * (Project → Connect → "Transaction pooler"), or connect Supabase through Vercel's integration,
+ * which sets POSTGRES_URL (pooled) automatically.
  */
-const databaseUrl = process.env.DATABASE_URL?.trim() || undefined
+const URL_VARIABLES = ["DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL"] as const
+const urlSource = URL_VARIABLES.find((name) => process.env[name]?.trim())
+const databaseUrl = urlSource ? process.env[urlSource]!.trim() : undefined
+
+/** Which environment variable the connection string came from (for setup messages). */
+export function getDbUrlSource() {
+  return urlSource ?? null
+}
 const serverless = Boolean(process.env.VERCEL || process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME)
 
 export type DbConfigIssue =
@@ -41,10 +49,20 @@ export function getDbConfigIssue(): DbConfigIssue | null {
   return null
 }
 
+/**
+ * The driver forwards unknown URL query options (e.g. Vercel's `supa=base-pooler.x`, Prisma's
+ * `pgbouncer=true`) to Postgres as settings, which it rejects. SSL is configured below instead.
+ */
+function stripQueryOptions(url: string) {
+  const parsed = new URL(url)
+  parsed.search = ""
+  return parsed.toString()
+}
+
 function createDb(url: string) {
   const { hostname } = new URL(url)
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-  const client = postgres(url, {
+  const client = postgres(stripQueryOptions(url), {
     // Required for Supabase's transaction pooler (port 6543); harmless elsewhere
     prepare: false,
     // Serverless functions each hold their own pool, so keep it small there

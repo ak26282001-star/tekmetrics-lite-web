@@ -42,6 +42,8 @@ The backend uses [Drizzle ORM](https://orm.drizzle.team) with Postgres — e.g. 
 2. Replace `[YOUR-PASSWORD]` with your database password.
 3. Set it as `DATABASE_URL` — in `.env.local` for local development, and in Vercel → Settings → Environment Variables (then redeploy).
 
+**Or use Vercel's Supabase integration** (Vercel → Storage / Integrations → Supabase → connect to this project). It sets `POSTGRES_URL` and friends automatically; the app uses `POSTGRES_URL` when `DATABASE_URL` isn't set (`DATABASE_URL` wins if both exist). Redeploy after connecting.
+
 On the first request the app creates its tables (migrations in `drizzle/`). Every table has **row level security enabled with no policies**, so Supabase's public Data API (anon key) can't read or change shop data; the app's server connection bypasses RLS. If something is misconfigured, `/app` shows a setup page explaining what to fix.
 
 Set `SEED_SAMPLE_DATA=true` to fill an *empty* database with demo vehicles and vendors. Real shops can add common parts dealers from the Vendors page in one click.

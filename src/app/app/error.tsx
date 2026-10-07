@@ -15,9 +15,9 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
       <p className="mt-1 text-sm text-muted-foreground">The app couldn&apos;t reach its database.</p>
       <ul className="mt-6 space-y-2 rounded-lg border p-4 text-left text-sm text-muted-foreground">
         <li>
-          Check <code className="font-mono">DATABASE_URL</code>: the Supabase{" "}
-          <span className="font-medium text-foreground">Transaction pooler</span> string, with your real
-          password.
+          Check the connection: Vercel&apos;s Supabase integration (<code className="font-mono">POSTGRES_URL</code>)
+          or your own <code className="font-mono">DATABASE_URL</code> with the{" "}
+          <span className="font-medium text-foreground">Transaction pooler</span> string and real password.
         </li>
         <li>
           Make sure the Supabase project isn&apos;t paused (free projects pause after a week without use —
