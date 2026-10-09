@@ -1,13 +1,15 @@
 import "server-only"
 
+import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { count } from "drizzle-orm"
+import { count, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/postgres-js"
 import { migrate } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
 
 import { createSeedData } from "@/lib/shop/seed"
+import { clientConfig, isServerless, resolveDatabaseUrl } from "./connection.mjs"
 import * as schema from "./schema"
 
 /**
@@ -15,15 +17,19 @@ import * as schema from "./schema"
  * (Project → Connect → "Transaction pooler"), or connect Supabase through Vercel's integration,
  * which sets POSTGRES_URL (pooled) automatically.
  */
-const URL_VARIABLES = ["DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL"] as const
-const urlSource = URL_VARIABLES.find((name) => process.env[name]?.trim())
-const databaseUrl = urlSource ? process.env[urlSource]!.trim() : undefined
+const { url: databaseUrl, source: urlSource } = resolveDatabaseUrl()
 
 /** Which environment variable the connection string came from (for setup messages). */
 export function getDbUrlSource() {
   return urlSource ?? null
 }
-const serverless = Boolean(process.env.VERCEL || process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME)
+const serverless = isServerless()
+
+/**
+ * Give up (and show the error page) instead of a spinner forever when the database doesn't answer.
+ * Kept under Vercel's 10 s limit on the free plan, after which Vercel shows its own timeout page.
+ */
+const READY_TIMEOUT_MS = 8_000
 
 export type DbConfigIssue =
   | "missing-database-url"
@@ -49,28 +55,9 @@ export function getDbConfigIssue(): DbConfigIssue | null {
   return null
 }
 
-/**
- * The driver forwards unknown URL query options (e.g. Vercel's `supa=base-pooler.x`, Prisma's
- * `pgbouncer=true`) to Postgres as settings, which it rejects. SSL is configured below instead.
- */
-function stripQueryOptions(url: string) {
-  const parsed = new URL(url)
-  parsed.search = ""
-  return parsed.toString()
-}
-
 function createDb(url: string) {
-  const { hostname } = new URL(url)
-  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-  const client = postgres(stripQueryOptions(url), {
-    // Required for Supabase's transaction pooler (port 6543); harmless elsewhere
-    prepare: false,
-    // Serverless functions each hold their own pool, so keep it small there
-    max: serverless ? 1 : 10,
-    ssl: isLocalHost ? false : "require",
-    connect_timeout: 15,
-  })
-  return drizzle(client, { schema })
+  const config = clientConfig(url, { serverless })
+  return drizzle(postgres(config.url, config.options), { schema })
 }
 
 type Db = ReturnType<typeof createDb>
@@ -81,8 +68,47 @@ const globalForDb = globalThis as unknown as {
   dbReady?: Promise<void>
 }
 
+const migrationsFolder = path.join(process.cwd(), "drizzle")
+
+/** Timestamp of the newest migration shipped with this build, or null if the files aren't deployed. */
+function latestMigrationMillis(): number | null {
+  try {
+    const journal = JSON.parse(
+      readFileSync(path.join(migrationsFolder, "meta", "_journal.json"), "utf8"),
+    ) as {
+      entries: { when: number }[]
+    }
+    return Math.max(...journal.entries.map((e) => e.when))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Tables are normally created while deploying (`npm run build` runs scripts/migrate.mjs), so in
+ * production a visit only does one quick check. Migrations run here as a fallback, and always in
+ * development.
+ */
+async function ensureMigrated(db: Db) {
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const rows = await db.execute<{ last: string | null }>(
+        sql`select max(created_at)::text as last from drizzle.__drizzle_migrations`,
+      )
+      const last = Number(rows[0]?.last ?? 0)
+      const shipped = latestMigrationMillis()
+      // Up to date — or migrated at deploy time and the files just aren't bundled with the server
+      if (last > 0 && (shipped === null || last >= shipped)) return
+    } catch {
+      // Migrations table missing: fall through and create everything
+    }
+  }
+  await migrate(db, { migrationsFolder })
+}
+
 async function prepare(db: Db) {
-  await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") })
+  const started = Date.now()
+  await ensureMigrated(db)
   // Sample data is opt-in so a real shop database never gets demo customers
   if (process.env.SEED_SAMPLE_DATA === "true") {
     const [{ value }] = await db.select({ value: count() }).from(schema.vehicles)
@@ -103,6 +129,18 @@ async function prepare(db: Db) {
       })
     }
   }
+  const ms = Date.now() - started
+  if (ms > 1500) console.warn(`[db] Connecting took ${ms} ms — see /app/status for why.`)
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
 }
 
 /** Returns the database once migrations (and optional sample data) are applied. */
@@ -111,14 +149,59 @@ export async function getDb() {
   if (issue || !databaseUrl) throw new Error(`Database is not configured (${issue}). See README → Database.`)
   // Connect lazily so importing this module (e.g. during `next build`) never opens a connection
   const db = (globalForDb.db ??= createDb(databaseUrl))
+  // Setup runs once per server and keeps going even if a visitor's request gives up waiting,
+  // so the next request can use the finished result instead of starting over.
   globalForDb.dbReady ??= prepare(db).catch((err) => {
-    globalForDb.dbReady = undefined // allow a retry on the next request
+    globalForDb.dbReady = undefined // a real failure: allow a fresh retry on the next request
     // Shows up in the server / hosting logs with the real cause
     console.error("[db] Could not connect to or migrate the database:", err)
     throw err
   })
-  await globalForDb.dbReady
+  await withTimeout(
+    globalForDb.dbReady,
+    READY_TIMEOUT_MS,
+    `Database didn't respond within ${READY_TIMEOUT_MS / 1000} s`,
+  ).catch((err) => {
+    if (String(err?.message).startsWith("Database didn't respond"))
+      console.error(
+        `[db] Still connecting after ${READY_TIMEOUT_MS / 1000} s — showing the error page for now`,
+      )
+    throw err
+  })
   return db
 }
 
 export { schema }
+
+/** Connection details safe to show on the status page (never the password). */
+export function getDbConnectionInfo() {
+  if (!databaseUrl) return null
+  try {
+    const url = new URL(databaseUrl)
+    return { source: urlSource, host: url.hostname, port: url.port || "5432", user: url.username }
+  } catch {
+    return null
+  }
+}
+
+/** Measures how long the database takes to answer from this server. */
+export async function measureDb() {
+  const t0 = Date.now()
+  const db = await getDb()
+  const readyMs = Date.now() - t0
+  const pings: number[] = []
+  for (let i = 0; i < 3; i++) {
+    const t = Date.now()
+    await db.execute(sql`select 1`)
+    pings.push(Date.now() - t)
+  }
+  const [vehicles, jobs, vendors] = await Promise.all(
+    [schema.vehicles, schema.jobs, schema.vendors].map((table) =>
+      db
+        .select({ value: count() })
+        .from(table)
+        .then((r) => r[0].value),
+    ),
+  )
+  return { readyMs, pingMs: [...pings].sort((a, b) => a - b)[1], counts: { vehicles, jobs, vendors } }
+}

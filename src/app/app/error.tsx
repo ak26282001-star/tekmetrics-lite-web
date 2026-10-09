@@ -24,7 +24,13 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
           restore it in the Supabase dashboard).
         </li>
         <li>After changing environment variables on Vercel, redeploy.</li>
-        <li>The exact cause is in the server logs (lines starting with [db]).</li>
+        <li>
+          Open{" "}
+          <a href="/app/status" className="text-primary underline">
+            Connection status
+          </a>{" "}
+          to test the connection. The exact cause is also in the server logs (lines starting with [db]).
+        </li>
       </ul>
       {error.digest && <p className="mt-3 font-mono text-xs text-muted-foreground">Error ID: {error.digest}</p>}
       <Button variant="outline" className="mt-6" onClick={() => retry()}>

@@ -45,15 +45,13 @@ export async function listVehicles(): Promise<VehicleSummary[]> {
 
 export async function getVehicleDetail(id: string) {
   const d = await db()
-  const [vehicleRow] = await d.select().from(schema.vehicles).where(eq(schema.vehicles.id, id))
+  // One round trip instead of three: fetch everything at once, then check the vehicle exists
+  const [[vehicleRow], jobs, invoices]: [VehicleRow[], Job[], Invoice[]] = await Promise.all([
+    d.select().from(schema.vehicles).where(eq(schema.vehicles.id, id)),
+    d.select().from(schema.jobs).where(eq(schema.jobs.vehicleId, id)).orderBy(desc(schema.jobs.createdAt)),
+    d.select().from(schema.invoices).where(eq(schema.invoices.vehicleId, id)),
+  ])
   if (!vehicleRow) return null
-
-  const jobs: Job[] = await d
-    .select()
-    .from(schema.jobs)
-    .where(eq(schema.jobs.vehicleId, id))
-    .orderBy(desc(schema.jobs.createdAt))
-  const invoices: Invoice[] = await d.select().from(schema.invoices).where(eq(schema.invoices.vehicleId, id))
 
   return { vehicle: toVehicle(vehicleRow), jobs, invoices }
 }
