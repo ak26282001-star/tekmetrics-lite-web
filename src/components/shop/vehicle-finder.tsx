@@ -10,14 +10,15 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { vehicleLabel } from "@/lib/shop/format"
-import type { VehicleSummary } from "@/lib/shop/types"
+import type { VehicleSummary, Vendor } from "@/lib/shop/types"
 import { normalizePlate, normalizeVin } from "@/lib/shop/vin"
 import { PlateChip, StatusBadge } from "./common"
 import { VehicleFormDialog } from "./vehicle-form-dialog"
+import { VendorQuickLinks } from "./vendor-quick-links"
 
 type Mode = "plate" | "vin"
 
-export function VehicleFinder({ vehicles }: { vehicles: VehicleSummary[] }) {
+export function VehicleFinder({ vehicles, vendors }: { vehicles: VehicleSummary[]; vendors: Vendor[] }) {
   const router = useRouter()
   const [mode, setMode] = React.useState<Mode>("plate")
   const [query, setQuery] = React.useState("")
@@ -122,6 +123,8 @@ export function VehicleFinder({ vehicles }: { vehicles: VehicleSummary[] }) {
           )}
         </div>
       </Card>
+
+      <VendorQuickLinks vendors={vendors} />
 
       <VehicleFormDialog
         open={adding}
